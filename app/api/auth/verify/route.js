@@ -1,18 +1,17 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db/connection';
 import { User } from '@/lib/db/models';
-import { verifyAuthCode, createUserSession } from '@/lib/utils/auth';
+import { verifyAuthCode, createUserSession, normalizePhoneNumber } from '@/lib/utils/auth';
 import { cookies } from 'next/headers';
-import { serialize } from 'cookie';
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { email, code } = body;
+    const { identifier, identifierType = 'email', code } = body;
 
-    if (!email || !code) {
+    if (!identifier || !code) {
       return NextResponse.json(
-        { error: 'Email and verification code are required' },
+        { error: 'Identifier and verification code are required' },
         { status: 400 }
       );
     }
@@ -20,11 +19,18 @@ export async function POST(request) {
     await connectToDatabase();
     
     // Find the user
-    const user = await User.findOne({
-      email: email.toLowerCase(),
+    const query = {
       'authCode.code': code,
       'authCode.expiresAt': { $gt: new Date() }
-    });
+    };
+    
+    if (identifierType === 'email') {
+      query.email = identifier.toLowerCase();
+    } else {
+      query.phone = normalizePhoneNumber(identifier);
+    }
+    
+    const user = await User.findOne(query);
     
     if (!user) {
       return NextResponse.json(
@@ -75,6 +81,7 @@ export async function POST(request) {
           id: user._id,
           name: user.name,
           email: user.email,
+          phone: user.phone,
           role: user.role,
         }
       },
@@ -83,8 +90,8 @@ export async function POST(request) {
   } catch (error) {
     console.error('Verification error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: error.message || 'Internal server error' },
       { status: 500 }
     );
   }
-} 
+}

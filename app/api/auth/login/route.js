@@ -6,11 +6,11 @@ import { createAuthCode } from '@/lib/utils/auth';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { email } = body;
+    const { identifier, identifierType = 'email' } = body;
 
-    if (!email) {
+    if (!identifier) {
       return NextResponse.json(
-        { error: 'Email is required' },
+        { error: 'Email or phone number is required' },
         { status: 400 }
       );
     }
@@ -18,10 +18,10 @@ export async function POST(request) {
     await connectToDatabase();
     
     // Create auth code for the user
-    const { user, code } = await createAuthCode(email);
+    const { user, code } = await createAuthCode(identifier, identifierType);
 
-    // In production, we would send the code via email here
-    console.log(`Auth code for ${email}: ${code}`);
+    // In production, we would send the code via email or SMS here
+    console.log(`Auth code for ${identifierType === 'email' ? 'email' : 'phone'} ${identifier}: ${code}`);
 
     return NextResponse.json(
       { 
@@ -35,8 +35,8 @@ export async function POST(request) {
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: error.message || 'Internal server error' },
       { status: 500 }
     );
   }
-} 
+}

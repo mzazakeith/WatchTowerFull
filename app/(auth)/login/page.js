@@ -1,21 +1,31 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { loginSchema, verifyCodeSchema } from '@/lib/validators/auth';
+import { loginSchema, verifyCodeSchema, registerSchema } from '@/lib/validators/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import PhoneInput from 'react-phone-input-2';
+import 'react-phone-input-2/lib/style.css';
 
 export default function AuthPage() {
   const [activeTab, setActiveTab] = useState('login');
   const [verifyStep, setVerifyStep] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
+  const [identifierType, setIdentifierType] = useState('email');
   const [generatedCode, setGeneratedCode] = useState('');
   const router = useRouter();
 
@@ -23,15 +33,17 @@ export default function AuthPage() {
   const loginForm = useForm({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: '',
+      identifier: '',
+      identifierType: 'email',
     },
   });
 
   // Registration form
   const registerForm = useForm({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(registerSchema),
     defaultValues: {
       email: '',
+      phone: '',
       name: '',
     },
   });
@@ -40,7 +52,8 @@ export default function AuthPage() {
   const verifyForm = useForm({
     resolver: zodResolver(verifyCodeSchema),
     defaultValues: {
-      email: '',
+      identifier: '',
+      identifierType: 'email',
       code: '',
     },
   });
@@ -49,18 +62,38 @@ export default function AuthPage() {
   async function onLoginSubmit(data) {
     setIsLoading(true);
     try {
-      // For development, generate and log the code
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log(`[DEV] Verification code for ${data.email}: ${code}`);
-      setGeneratedCode(code);
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          identifier: data.identifier,
+          identifierType: data.identifierType,
+        }),
+      });
       
-      toast.success('Verification code sent to your email');
+      const result = await response.json();
       
-      setEmail(data.email);
-      verifyForm.setValue('email', data.email);
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send verification code');
+      }
+      
+      toast.success('Verification code sent successfully');
+      
+      // If in development mode, show the code
+      if (result.debug?.code) {
+        console.log(`[DEV] Verification code for ${data.identifier}: ${result.debug.code}`);
+        setGeneratedCode(result.debug.code);
+      }
+      
+      setIdentifier(data.identifier);
+      setIdentifierType(data.identifierType);
+      verifyForm.setValue('identifier', data.identifier);
+      verifyForm.setValue('identifierType', data.identifierType);
       setVerifyStep(true);
     } catch (error) {
-      toast.error('Failed to send verification code');
+      toast.error(error.message || 'Failed to send verification code');
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -71,18 +104,54 @@ export default function AuthPage() {
   async function onRegisterSubmit(data) {
     setIsLoading(true);
     try {
-      // For development, generate and log the code
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log(`[DEV] Verification code for new user ${data.name} (${data.email}): ${code}`);
-      setGeneratedCode(code);
+      // Determine which identifier to use (email or phone)
+      const hasEmail = !!data.email;
+      const hasPhone = !!data.phone;
       
-      toast.success('Account created! Verification code sent to your email');
+      if (!hasEmail && !hasPhone) {
+        throw new Error('Please provide either an email or phone number');
+      }
       
-      setEmail(data.email);
-      verifyForm.setValue('email', data.email);
+      // Prefer email if both are provided
+      const identifierType = hasEmail ? 'email' : 'phone';
+      const identifier = hasEmail ? data.email : data.phone;
+      
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          identifier,
+          identifierType,
+          name: data.name,
+          // Include both for user profile
+          email: data.email,
+          phone: data.phone,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to create account');
+      }
+      
+      toast.success('Account created! Verification code sent');
+      
+      // If in development mode, show the code
+      if (result.debug?.code) {
+        console.log(`[DEV] Verification code for new user ${data.name} (${identifier}): ${result.debug.code}`);
+        setGeneratedCode(result.debug.code);
+      }
+      
+      setIdentifier(identifier);
+      setIdentifierType(identifierType);
+      verifyForm.setValue('identifier', identifier);
+      verifyForm.setValue('identifierType', identifierType);
       setVerifyStep(true);
     } catch (error) {
-      toast.error('Failed to create account');
+      toast.error(error.message || 'Failed to create account');
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -93,15 +162,28 @@ export default function AuthPage() {
   async function onVerifySubmit(data) {
     setIsLoading(true);
     try {
-      // For development, check against the generated code
-      if (data.code === generatedCode) {
-        toast.success('Successfully authenticated');
-        router.push('/dashboard');
-      } else {
-        toast.error('Invalid verification code');
+      const response = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          identifier: data.identifier,
+          identifierType: data.identifierType,
+          code: data.code,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to verify code');
       }
+      
+      toast.success('Successfully authenticated');
+      router.push('/dashboard');
     } catch (error) {
-      toast.error('Failed to verify code');
+      toast.error(error.message || 'Failed to verify code');
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -111,6 +193,35 @@ export default function AuthPage() {
   // Go back to login/register step
   function handleBack() {
     setVerifyStep(false);
+  }
+
+  // Handle identifier type change
+  function handleIdentifierTypeChange(value, formContext) {
+    formContext.setValue('identifierType', value);
+    formContext.setValue('identifier', ''); // Clear the identifier field
+  }
+
+  // Render identifier input based on type
+  function renderIdentifierInput(field, formContext, identifierType) {
+    if (identifierType === 'phone') {
+      return (
+        <PhoneInput
+          country={'us'}
+          value={field.value}
+          onChange={(phone) => formContext.setValue('identifier', phone)}
+          inputClass="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          containerClass="w-full"
+          buttonClass="border border-input bg-background"
+        />
+      );
+    }
+    
+    return (
+      <Input 
+        placeholder={identifierType === 'email' ? "you@example.com" : "+1234567890"} 
+        {...field} 
+      />
+    );
   }
 
   return (
@@ -132,12 +243,38 @@ export default function AuthPage() {
               <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
                 <FormField
                   control={loginForm.control}
-                  name="email"
+                  name="identifierType"
+                  render={({ field }) => (
+                    <FormItem className="w-full">
+                      <FormLabel>Login Method</FormLabel>
+                      <Select
+                        onValueChange={(value) => handleIdentifierTypeChange(value, loginForm)}
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select login method" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="phone">Phone Number</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={loginForm.control}
+                  name="identifier"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>
+                        {loginForm.watch('identifierType') === 'email' ? 'Email' : 'Phone Number'}
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder="you@example.com" {...field} />
+                        {renderIdentifierInput(field, loginForm, loginForm.watch('identifierType'))}
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -180,9 +317,34 @@ export default function AuthPage() {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input placeholder="you@example.com" {...field} />
+                        <Input 
+                        type = "email"
+                        placeholder="you@example.com" {
+                          ...field} />
                       </FormControl>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={registerForm.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <PhoneInput
+                          country={'us'}
+                          value={field.value}
+                          onChange={(phone) => registerForm.setValue('phone', phone)}
+                          inputClass="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          containerClass="w-full"
+                          buttonClass="border border-input bg-background"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      <p className="text-xs text-muted-foreground mt-1">At least one contact method is required</p>
                     </FormItem>
                   )}
                 />
@@ -198,10 +360,15 @@ export default function AuthPage() {
         // Verification Step
         <div className="space-y-6">
           <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold">Verify Your Email</h2>
+            <h2 className="text-2xl font-bold">Verify Your {identifierType === 'email' ? 'Email' : 'Phone'}</h2>
             <p className="text-muted-foreground">
-              We sent a verification code to <strong>{email}</strong>
+              We sent a verification code to <strong>{identifier}</strong>
             </p>
+            {process.env.NODE_ENV === 'development' && generatedCode && (
+              <p className="mt-2 p-2 bg-yellow-100 dark:bg-yellow-900 rounded text-sm">
+                <strong>DEV MODE:</strong> Verification code is <code className="font-mono bg-yellow-200 dark:bg-yellow-800 px-1 rounded">{generatedCode}</code>
+              </p>
+            )}
           </div>
           
           <Form {...verifyForm}>

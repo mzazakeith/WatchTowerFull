@@ -26,6 +26,7 @@ export async function GET() {
             id: session.userId,
             name: session.name,
             email: session.email,
+            phone: session.phone,
             role: session.role,
             teams: session.teams,
             primaryTeam: session.primaryTeam
@@ -56,4 +57,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-} 
+}
