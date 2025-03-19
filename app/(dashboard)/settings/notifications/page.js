@@ -13,33 +13,53 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { IconBell, IconMail, IconBrandSlack, IconMessage, IconPhone, IconDeviceMobile } from '@tabler/icons-react';
 
 const notificationSchema = z.object({
-  alertThresholds: z.object({
-    responseTime: z.number().min(100).max(10000),
-    errorRate: z.number().min(0).max(100),
-    cpuUsage: z.number().min(0).max(100),
-    memoryUsage: z.number().min(0).max(100),
-  }),
   channels: z.object({
     email: z.object({
       enabled: z.boolean(),
       address: z.string().email().optional(),
     }),
+    browser: z.object({
+      enabled: z.boolean(),
+    }),
+    mobile: z.object({
+      enabled: z.boolean(),
+      phoneNumber: z.string().optional(),
+    }),
     slack: z.object({
       enabled: z.boolean(),
-      webhook: z.string().url().optional(),
+      webhook: z.string().url().or(z.string().length(0)).optional(),
+      channel: z.string().optional(),
     }),
     sms: z.object({
       enabled: z.boolean(),
       phoneNumber: z.string().optional(),
     }),
   }),
-  severity: z.object({
-    info: z.boolean(),
-    warning: z.boolean(),
-    critical: z.boolean(),
-    down: z.boolean(),
+  alerts: z.object({
+    thresholds: z.object({
+      responseTime: z.number().min(100).max(10000),
+      errorRate: z.number().min(0).max(100),
+      cpuUsage: z.number().min(0).max(100),
+      memoryUsage: z.number().min(0).max(100),
+    }),
+    severity: z.object({
+      info: z.boolean(),
+      warning: z.boolean(),
+      critical: z.boolean(),
+      down: z.boolean(),
+    }),
+  }),
+  preferences: z.object({
+    dailyDigest: z.boolean(),
+    weeklyReport: z.boolean(),
+    quietHours: z.object({
+      enabled: z.boolean(),
+      start: z.string(),
+      end: z.string(),
+    }),
   }),
 });
 
@@ -49,31 +69,50 @@ export default function NotificationsPage() {
   const form = useForm({
     resolver: zodResolver(notificationSchema),
     defaultValues: {
-      alertThresholds: {
-        responseTime: 1000,
-        errorRate: 5,
-        cpuUsage: 80,
-        memoryUsage: 80,
-      },
       channels: {
         email: {
           enabled: true,
           address: 'user@example.com',
         },
+        browser: {
+          enabled: true,
+        },
+        mobile: {
+          enabled: false,
+          phoneNumber: '',
+        },
         slack: {
           enabled: false,
           webhook: '',
+          channel: '',
         },
         sms: {
           enabled: false,
           phoneNumber: '',
         },
       },
-      severity: {
-        info: false,
-        warning: true,
-        critical: true,
-        down: true,
+      alerts: {
+        thresholds: {
+          responseTime: 1000,
+          errorRate: 5,
+          cpuUsage: 80,
+          memoryUsage: 80,
+        },
+        severity: {
+          info: false,
+          warning: true,
+          critical: true,
+          down: true,
+        },
+      },
+      preferences: {
+        dailyDigest: true,
+        weeklyReport: true,
+        quietHours: {
+          enabled: false,
+          start: '22:00',
+          end: '08:00',
+        },
       },
     },
   });
@@ -106,147 +145,41 @@ export default function NotificationsPage() {
         </p>
       </div>
       
-      <Tabs defaultValue="thresholds" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="thresholds">Alert Thresholds</TabsTrigger>
+      <Tabs defaultValue="channels" className="space-y-4">
+        <TabsList className="grid grid-cols-3 w-full max-w-md">
           <TabsTrigger value="channels">Notification Channels</TabsTrigger>
-          <TabsTrigger value="severity">Severity Levels</TabsTrigger>
+          <TabsTrigger value="alerts">Alert Settings</TabsTrigger>
+          <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <TabsContent value="thresholds">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Alert Thresholds</CardTitle>
-                  <CardDescription>
-                    Configure when alerts should be triggered
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-8">
-                  <FormField
-                    control={form.control}
-                    name="alertThresholds.responseTime"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Response Time (ms)</FormLabel>
-                        <FormDescription>
-                          Trigger an alert when response time exceeds this threshold
-                        </FormDescription>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={100}
-                            max={10000}
-                            step={100}
-                            {...field}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="alertThresholds.errorRate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Error Rate (%)</FormLabel>
-                        <FormDescription>
-                          Trigger an alert when error rate exceeds this percentage
-                        </FormDescription>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={1}
-                            {...field}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="alertThresholds.cpuUsage"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>CPU Usage (%)</FormLabel>
-                        <FormDescription>
-                          Trigger an alert when CPU usage exceeds this percentage
-                        </FormDescription>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={5}
-                            {...field}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="alertThresholds.memoryUsage"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Memory Usage (%)</FormLabel>
-                        <FormDescription>
-                          Trigger an alert when memory usage exceeds this percentage
-                        </FormDescription>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={5}
-                            {...field}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
             <TabsContent value="channels">
               <Card>
                 <CardHeader>
                   <CardTitle>Notification Channels</CardTitle>
                   <CardDescription>
-                    Configure how you want to receive notifications
+                    Choose how you'd like to receive notifications and alerts
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-4">
-                    <div className="rounded-lg border p-4">
+                <CardContent className="space-y-6">
+                  {/* Email Channel */}
+                  <div className="rounded-lg border p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <IconMail size={24} />
+                        <div>
+                          <h3 className="text-lg font-medium">Email Notifications</h3>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                            Receive notifications via email
+                          </p>
+                        </div>
+                      </div>
                       <FormField
                         control={form.control}
                         name="channels.email.enabled"
                         render={({ field }) => (
-                          <FormItem className="flex flex-row items-center justify-between mb-4">
-                            <div className="space-y-0.5">
-                              <FormLabel className="text-base font-semibold">
-                                Email Notifications
-                              </FormLabel>
-                              <FormDescription>
-                                Receive alert notifications via email
-                              </FormDescription>
-                            </div>
+                          <FormItem>
                             <FormControl>
                               <Switch
                                 checked={field.value}
@@ -256,8 +189,10 @@ export default function NotificationsPage() {
                           </FormItem>
                         )}
                       />
-                      
-                      {form.watch('channels.email.enabled') && (
+                    </div>
+                    
+                    {form.watch("channels.email.enabled") && (
+                      <div className="pt-2">
                         <FormField
                           control={form.control}
                           name="channels.email.address"
@@ -265,29 +200,39 @@ export default function NotificationsPage() {
                             <FormItem>
                               <FormLabel>Email Address</FormLabel>
                               <FormControl>
-                                <Input placeholder="you@example.com" {...field} />
+                                <Input
+                                  placeholder="your@email.com"
+                                  {...field}
+                                />
                               </FormControl>
+                              <FormDescription>
+                                Email address for receiving notifications
+                              </FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-                      )}
-                    </div>
-                    
-                    <div className="rounded-lg border p-4">
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Browser Channel */}
+                  <div className="rounded-lg border p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <IconBell size={24} />
+                        <div>
+                          <h3 className="text-lg font-medium">Browser Notifications</h3>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                            Get notifications in your browser
+                          </p>
+                        </div>
+                      </div>
                       <FormField
                         control={form.control}
-                        name="channels.slack.enabled"
+                        name="channels.browser.enabled"
                         render={({ field }) => (
-                          <FormItem className="flex flex-row items-center justify-between mb-4">
-                            <div className="space-y-0.5">
-                              <FormLabel className="text-base font-semibold">
-                                Slack Notifications
-                              </FormLabel>
-                              <FormDescription>
-                                Receive alert notifications in Slack
-                              </FormDescription>
-                            </div>
+                          <FormItem>
                             <FormControl>
                               <Switch
                                 checked={field.value}
@@ -297,38 +242,63 @@ export default function NotificationsPage() {
                           </FormItem>
                         )}
                       />
-                      
-                      {form.watch('channels.slack.enabled') && (
-                        <FormField
-                          control={form.control}
-                          name="channels.slack.webhook"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Slack Webhook URL</FormLabel>
-                              <FormControl>
-                                <Input placeholder="https://hooks.slack.com/services/..." {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Mobile Channel */}
+                  <div className="rounded-lg border p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <IconDeviceMobile size={24} />
+                        <div>
+                          <h3 className="text-lg font-medium">Mobile Push Notifications</h3>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                            Receive notifications on your mobile device
+                          </p>
+                        </div>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="channels.mobile.enabled"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
                     </div>
                     
-                    <div className="rounded-lg border p-4">
+                    {form.watch("channels.mobile.enabled") && (
+                      <div className="pt-2">
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                          Download our mobile app and sign in to receive push notifications
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* SMS Channel */}
+                  <div className="rounded-lg border p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <IconPhone size={24} />
+                        <div>
+                          <h3 className="text-lg font-medium">SMS Alerts</h3>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                            Get critical alerts via text message
+                          </p>
+                        </div>
+                      </div>
                       <FormField
                         control={form.control}
                         name="channels.sms.enabled"
                         render={({ field }) => (
-                          <FormItem className="flex flex-row items-center justify-between mb-4">
-                            <div className="space-y-0.5">
-                              <FormLabel className="text-base font-semibold">
-                                SMS Notifications
-                              </FormLabel>
-                              <FormDescription>
-                                Receive alert notifications via SMS
-                              </FormDescription>
-                            </div>
+                          <FormItem>
                             <FormControl>
                               <Switch
                                 checked={field.value}
@@ -338,8 +308,10 @@ export default function NotificationsPage() {
                           </FormItem>
                         )}
                       />
-                      
-                      {form.watch('channels.sms.enabled') && (
+                    </div>
+                    
+                    {form.watch("channels.sms.enabled") && (
+                      <div className="pt-2">
                         <FormField
                           control={form.control}
                           name="channels.sms.phoneNumber"
@@ -347,130 +319,436 @@ export default function NotificationsPage() {
                             <FormItem>
                               <FormLabel>Phone Number</FormLabel>
                               <FormControl>
-                                <Input placeholder="+1234567890" {...field} />
+                                <Input
+                                  placeholder="+1 (555) 123-4567"
+                                  {...field}
+                                />
                               </FormControl>
+                              <FormDescription>
+                                Phone number for receiving SMS alerts
+                              </FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-                      )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Slack Channel */}
+                  <div className="rounded-lg border p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <IconBrandSlack size={24} className="text-[#4A154B]" />
+                        <div>
+                          <h3 className="text-lg font-medium">Slack Notifications</h3>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                            Get notifications in your Slack workspace
+                          </p>
+                        </div>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="channels.slack.enabled"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    
+                    {form.watch("channels.slack.enabled") && (
+                      <div className="space-y-4 pt-2">
+                        <FormField
+                          control={form.control}
+                          name="channels.slack.webhook"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Webhook URL</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="https://hooks.slack.com/services/xxx/yyy/zzz"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                The webhook URL for your Slack workspace
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="channels.slack.channel"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Channel</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="#alerts"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                The channel where notifications will be sent
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="alerts">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Alert Settings</CardTitle>
+                  <CardDescription>
+                    Configure when alerts should be triggered and their severity levels
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-8">
+                  <div>
+                    <h3 className="text-lg font-medium mb-4">Alert Thresholds</h3>
+                    <div className="space-y-6">
+                      <FormField
+                        control={form.control}
+                        name="alerts.thresholds.responseTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Response Time (ms)</FormLabel>
+                            <FormDescription>
+                              Trigger an alert when response time exceeds this threshold
+                            </FormDescription>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={100}
+                                max={10000}
+                                step={100}
+                                {...field}
+                                onChange={(e) => field.onChange(Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="alerts.thresholds.errorRate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Error Rate (%)</FormLabel>
+                            <FormDescription>
+                              Trigger an alert when error rate exceeds this percentage
+                            </FormDescription>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={1}
+                                {...field}
+                                onChange={(e) => field.onChange(Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="alerts.thresholds.cpuUsage"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>CPU Usage (%)</FormLabel>
+                            <FormDescription>
+                              Trigger an alert when CPU usage exceeds this percentage
+                            </FormDescription>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={5}
+                                {...field}
+                                onChange={(e) => field.onChange(Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="alerts.thresholds.memoryUsage"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Memory Usage (%)</FormLabel>
+                            <FormDescription>
+                              Trigger an alert when memory usage exceeds this percentage
+                            </FormDescription>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={5}
+                                {...field}
+                                onChange={(e) => field.onChange(Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div>
+                    <h3 className="text-lg font-medium mb-4">Severity Levels</h3>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                      Choose which severity levels should trigger notifications
+                    </p>
+                    
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="alerts.severity.info"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between p-4 rounded-lg border">
+                            <div>
+                              <FormLabel className="font-medium">Info</FormLabel>
+                              <FormDescription>
+                                Informational alerts (no action required)
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="alerts.severity.warning"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between p-4 rounded-lg border">
+                            <div>
+                              <FormLabel className="font-medium">Warning</FormLabel>
+                              <FormDescription>
+                                Warning alerts (might require attention)
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="alerts.severity.critical"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between p-4 rounded-lg border">
+                            <div>
+                              <FormLabel className="font-medium">Critical</FormLabel>
+                              <FormDescription>
+                                Critical alerts (requires immediate attention)
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="alerts.severity.down"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between p-4 rounded-lg border">
+                            <div>
+                              <FormLabel className="font-medium">Service Down</FormLabel>
+                              <FormDescription>
+                                Service outage alerts (highest priority)
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </TabsContent>
             
-            <TabsContent value="severity">
+            <TabsContent value="preferences">
               <Card>
                 <CardHeader>
-                  <CardTitle>Severity Levels</CardTitle>
+                  <CardTitle>Notification Preferences</CardTitle>
                   <CardDescription>
-                    Configure which severity levels should trigger notifications
+                    Customize how and when you receive notifications
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="severity.info"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">
-                            <span className="inline-block w-3 h-3 rounded-full bg-blue-500 mr-2"></span>
-                            Info
-                          </FormLabel>
-                          <FormDescription>
-                            Low priority notifications and status updates
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="preferences.dailyDigest"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between p-4 rounded-lg border">
+                          <div>
+                            <FormLabel className="font-medium">Daily Digest</FormLabel>
+                            <FormDescription>
+                              Receive a daily summary of all activity
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="preferences.weeklyReport"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between p-4 rounded-lg border">
+                          <div>
+                            <FormLabel className="font-medium">Weekly Report</FormLabel>
+                            <FormDescription>
+                              Receive a weekly summary with detailed analytics
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   
-                  <FormField
-                    control={form.control}
-                    name="severity.warning"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">
-                            <span className="inline-block w-3 h-3 rounded-full bg-yellow-500 mr-2"></span>
-                            Warning
-                          </FormLabel>
-                          <FormDescription>
-                            Issues that may need attention but don't affect service
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
+                  <Separator />
                   
-                  <FormField
-                    control={form.control}
-                    name="severity.critical"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">
-                            <span className="inline-block w-3 h-3 rounded-full bg-purple-600 mr-2"></span>
-                            Critical
-                          </FormLabel>
-                          <FormDescription>
-                            Serious issues affecting part of the service
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
+                  <div className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="preferences.quietHours.enabled"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between p-4 rounded-lg border">
+                          <div>
+                            <FormLabel className="font-medium">Quiet Hours</FormLabel>
+                            <FormDescription>
+                              Don't send notifications during specific hours
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    
+                    {form.watch("preferences.quietHours.enabled") && (
+                      <div className="grid grid-cols-2 gap-4 pt-2">
+                        <FormField
+                          control={form.control}
+                          name="preferences.quietHours.start"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Start Time</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="time"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                When quiet hours begin
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="preferences.quietHours.end"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>End Time</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="time"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                When quiet hours end
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                     )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="severity.down"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">
-                            <span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span>
-                            Down
-                          </FormLabel>
-                          <FormDescription>
-                            Service is completely unavailable
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
             
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : 'Save Settings'}
-            </Button>
+            <CardFooter className="flex justify-end px-0">
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </CardFooter>
           </form>
         </Form>
       </Tabs>

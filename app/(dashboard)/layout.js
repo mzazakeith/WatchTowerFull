@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Toaster } from 'sonner';
 import { 
   HomeIcon, 
@@ -50,16 +50,42 @@ const navigationItems = [
       { name: 'Preferences', href: '/settings/preferences' },
       { name: 'Notifications', href: '/settings/notifications' },
       { name: 'API Keys', href: '/settings/api-keys' },
+      { name: 'Integrations', href: '/settings/integrations' },
       { name: 'Billing', href: '/settings/billing' },
-      { name: 'Team', href: '/settings/team' },
     ] 
   },
 ];
 
 export default function DashboardLayout({ children }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [openSubmenu, setOpenSubmenu] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch user session data when component mounts
+    async function fetchUserSession() {
+      try {
+        const response = await fetch('/api/auth/session');
+        const data = await response.json();
+        
+        if (data.authenticated && data.user) {
+          setUser(data.user);
+        } else {
+          // Redirect to login if not authenticated
+          router.push('/login');
+        }
+      } catch (error) {
+        console.error('Failed to fetch user session:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchUserSession();
+  }, [router]);
 
   const toggleSubmenu = (name) => {
     setOpenSubmenu(openSubmenu === name ? null : name);
@@ -69,6 +95,27 @@ export default function DashboardLayout({ children }) {
     if (href === '/dashboard' && pathname === '/dashboard') return true;
     if (href !== '/dashboard' && pathname.startsWith(href)) return true;
     return false;
+  };
+
+  // Generate avatar fallback from user's name
+  const getAvatarFallback = (name) => {
+    if (!name) return 'U';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        router.push('/login');
+      }
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   return (
@@ -250,16 +297,22 @@ export default function DashboardLayout({ children }) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center space-x-2">
                     <Avatar className="w-8 h-8">
-                      <AvatarImage src="" alt="User" />
-                      <AvatarFallback className="bg-primary text-primary-foreground">JD</AvatarFallback>
+                      <AvatarImage src="" alt={user?.name || 'User'} />
+                      <AvatarFallback className="bg-primary text-primary-foreground">
+                        {user ? getAvatarFallback(user.name) : '...'}
+                      </AvatarFallback>
                     </Avatar>
-                    <span className="text-sm font-medium hidden md:inline-block">John Doe</span>
+                    <span className="text-sm font-medium hidden md:inline-block">
+                      {loading ? 'Loading...' : user?.name || 'Guest'}
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <div className="p-2 border-b border-neutral-200 dark:border-neutral-800">
-                    <p className="text-sm font-medium">John Doe</p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">john.doe@example.com</p>
+                    <p className="text-sm font-medium">{user?.name || 'Guest'}</p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      {user?.email || user?.phone || ''}
+                    </p>
                   </div>
                   <DropdownMenuItem asChild>
                     <Link href="/profile">My Profile</Link>
@@ -270,8 +323,8 @@ export default function DashboardLayout({ children }) {
                   <DropdownMenuItem asChild>
                     <Link href="/api-keys">API Keys</Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/login" className="text-red-500 dark:text-red-400">Logout</Link>
+                  <DropdownMenuItem onClick={handleLogout} className="text-red-500 dark:text-red-400">
+                    Logout
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -288,4 +341,4 @@ export default function DashboardLayout({ children }) {
       <Toaster />
     </div>
   );
-} 
+}

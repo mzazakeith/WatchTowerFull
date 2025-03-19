@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
 import { 
   UserGroupIcon, 
   MagnifyingGlassIcon, 
@@ -18,8 +19,13 @@ import {
   ChatBubbleLeftRightIcon,
   BellIcon,
   ClockIcon,
-  ServerIcon
+  ServerIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useForm } from 'react-hook-form';
 
 // Team Card Component
 function TeamCard({ team }) {
@@ -79,7 +85,14 @@ function TeamCard({ team }) {
       </CardContent>
       <CardFooter className="border-t border-neutral-200 dark:border-neutral-800 pt-4 flex justify-between">
         <Button variant="outline" size="sm">View Team</Button>
-        <Button variant="ghost" size="sm">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => {
+            setSelectedTeam(team.id);
+            setAddMemberOpen(true);
+          }}
+        >
           <UserPlusIcon className="h-4 w-4 mr-2" />
           Add Member
         </Button>
@@ -186,92 +199,255 @@ function TeamStats({ stats }) {
 
 export default function TeamsPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // Mock data
-  const teams = [
-    {
-      id: 1,
-      name: 'Core Infrastructure',
-      description: 'Manages core servers and infrastructure',
-      type: 'operations',
-      members: [
-        { id: 1, name: 'Alex Johnson', role: 'Team Lead', avatar: '/avatars/alex.jpg', status: 'online' },
-        { id: 2, name: 'Sarah Miller', role: 'DevOps Engineer', avatar: '/avatars/sarah.jpg', status: 'offline' },
-        { id: 3, name: 'James Wilson', role: 'SRE', avatar: '/avatars/james.jpg', status: 'online' },
-        { id: 4, name: 'Linda Chen', role: 'Network Engineer', avatar: '/avatars/linda.jpg', status: 'online' },
-        { id: 5, name: 'David Park', role: 'Systems Admin', avatar: '/avatars/david.jpg', status: 'offline' },
-        { id: 6, name: 'Michael Brown', role: 'Cloud Engineer', avatar: '/avatars/michael.jpg', status: 'online' },
-      ],
-      services: 18,
-      activeIncidents: 2,
-      tags: ['infrastructure', 'cloud', 'networking']
-    },
-    {
-      id: 2,
-      name: 'Application Support',
-      description: 'Frontend and backend application monitoring',
-      type: 'development',
-      members: [
-        { id: 7, name: 'Emma Davis', role: 'Team Lead', avatar: '/avatars/emma.jpg', status: 'online' },
-        { id: 8, name: 'Ryan Taylor', role: 'Full-stack Developer', avatar: '/avatars/ryan.jpg', status: 'offline' },
-        { id: 9, name: 'Olivia Martin', role: 'Frontend Developer', avatar: '/avatars/olivia.jpg', status: 'online' },
-        { id: 10, name: 'Noah Garcia', role: 'Backend Developer', avatar: '/avatars/noah.jpg', status: 'online' },
-      ],
-      services: 12,
-      activeIncidents: 1,
-      tags: ['frontend', 'backend', 'api']
-    },
-    {
-      id: 3,
-      name: 'Security Operations',
-      description: 'Security monitoring and incident response',
-      type: 'admin',
-      members: [
-        { id: 11, name: 'Sophia Lee', role: 'Security Lead', avatar: '/avatars/sophia.jpg', status: 'online' },
-        { id: 12, name: 'William Clark', role: 'Security Analyst', avatar: '/avatars/william.jpg', status: 'offline' },
-        { id: 13, name: 'Ava Rodriguez', role: 'Compliance Specialist', avatar: '/avatars/ava.jpg', status: 'online' },
-      ],
-      services: 8,
-      activeIncidents: 0,
-      tags: ['security', 'compliance', 'auditing']
-    },
-    {
-      id: 4,
-      name: 'Data Engineering',
-      description: 'Database and data pipeline monitoring',
-      type: 'development',
-      members: [
-        { id: 14, name: 'Ethan Wilson', role: 'Data Lead', avatar: '/avatars/ethan.jpg', status: 'online' },
-        { id: 15, name: 'Isabella Thomas', role: 'Database Engineer', avatar: '/avatars/isabella.jpg', status: 'offline' },
-        { id: 16, name: 'Jacob Martinez', role: 'Data Scientist', avatar: '/avatars/jacob.jpg', status: 'online' },
-        { id: 17, name: 'Mia Johnson', role: 'ETL Developer', avatar: '/avatars/mia.jpg', status: 'online' },
-      ],
-      services: 15,
-      activeIncidents: 1,
-      tags: ['database', 'data-pipeline', 'analytics']
+  const [teams, setTeams] = useState([]);
+  const [activeMembers, setActiveMembers] = useState([]);
+  const [teamStats, setTeamStats] = useState({
+    totalMembers: 0,
+    servicesManaged: 0,
+    activeIncidents: 0,
+    avgResponseTime: '0m 0s'
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activityData, setActivityData] = useState([]);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState("");
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberRole, setMemberRole] = useState("member");
+
+  // Fetch teams data
+  useEffect(() => {
+    async function fetchTeams() {
+      try {
+        setIsLoading(true);
+        
+        // Fetch teams data
+        const teamsResponse = await fetch('/api/teams');
+        
+        if (!teamsResponse.ok) {
+          throw new Error('Failed to fetch teams');
+        }
+        
+        const teamsData = await teamsResponse.json();
+        
+        // Format the teams data for display
+        const formattedTeams = teamsData.map(team => ({
+          id: team._id,
+          name: team.name,
+          description: team.description || 'No description provided',
+          type: team.settings?.type || 'operations',
+          members: team.members.map(member => ({
+            id: member.userId?._id || member.userId,
+            name: member.userId?.name || 'Unknown User',
+            avatar: member.userId?.avatar || '',
+            role: member.role
+          })),
+          services: team.settings?.servicesCount || 0,
+          activeIncidents: team.settings?.activeIncidentsCount || 0,
+          tags: team.settings?.tags || ['monitoring', 'alerts']
+        }));
+        
+        setTeams(formattedTeams);
+        
+        // Fetch activity data
+        fetchActivityData();
+        
+        // Set dummy stats for now - will be replaced with real data
+        setTeamStats({
+          totalMembers: formattedTeams.reduce((acc, team) => acc + team.members.length, 0),
+          servicesManaged: formattedTeams.reduce((acc, team) => acc + team.services, 0),
+          activeIncidents: formattedTeams.reduce((acc, team) => acc + team.activeIncidents, 0),
+          responseTime: '5.2 min'
+        });
+        
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching teams data:', err);
+        setError(err.message || 'Failed to load teams data');
+        toast.error(err.message || 'Failed to load teams data');
+        
+        // Set empty data if fetch fails
+        setTeams([]);
+        setActiveMembers([]);
+      } finally {
+        setIsLoading(false);
+      }
     }
-  ];
-  
-  const activeMembers = [
-    { id: 1, name: 'Alex Johnson', role: 'Team Lead', avatar: '/avatars/alex.jpg', status: 'online' },
-    { id: 3, name: 'James Wilson', role: 'SRE', avatar: '/avatars/james.jpg', status: 'online' },
-    { id: 4, name: 'Linda Chen', role: 'Network Engineer', avatar: '/avatars/linda.jpg', status: 'online' },
-    { id: 6, name: 'Michael Brown', role: 'Cloud Engineer', avatar: '/avatars/michael.jpg', status: 'online' },
-    { id: 7, name: 'Emma Davis', role: 'Team Lead', avatar: '/avatars/emma.jpg', status: 'online' },
-    { id: 9, name: 'Olivia Martin', role: 'Frontend Developer', avatar: '/avatars/olivia.jpg', status: 'online' },
-    { id: 10, name: 'Noah Garcia', role: 'Backend Developer', avatar: '/avatars/noah.jpg', status: 'online' },
-    { id: 11, name: 'Sophia Lee', role: 'Security Lead', avatar: '/avatars/sophia.jpg', status: 'online' },
-    { id: 13, name: 'Ava Rodriguez', role: 'Compliance Specialist', avatar: '/avatars/ava.jpg', status: 'online' },
-    { id: 14, name: 'Ethan Wilson', role: 'Data Lead', avatar: '/avatars/ethan.jpg', status: 'online' },
-    { id: 17, name: 'Mia Johnson', role: 'ETL Developer', avatar: '/avatars/mia.jpg', status: 'online' },
-  ];
-  
-  const teamStats = {
-    totalMembers: 17,
-    servicesManaged: 53,
-    activeIncidents: 4,
-    avgResponseTime: '12m 30s',
-  };
+    
+    fetchTeams();
+  }, []);
+
+  // Fetch activity data
+  async function fetchActivityData() {
+    try {
+      // Make API call to get recent activities
+      const response = await fetch('/api/teams/activity');
+      
+      if (response.ok) {
+        const activityData = await response.json();
+        setActivityData(activityData);
+        
+        // Extract active members from activity data
+        const activeUsers = [...new Map(activityData
+          .filter(item => item.user)
+          .map(item => [item.user.id, {
+            id: item.user.id,
+            name: item.user.name,
+            avatar: item.user.avatar,
+            role: item.user.role || 'Member',
+            status: 'online',
+            team: item.team?.name || 'Unknown Team'
+          }])
+        ).values()];
+        
+        setActiveMembers(activeUsers);
+      } else {
+        // If API fails, handle the error properly
+        console.error('Failed to fetch activity data:', response.statusText);
+        toast.error('Failed to fetch activity data');
+        
+        // Set empty activity data instead of dummy data
+        setActivityData([]);
+        setActiveMembers([]);
+      }
+    } catch (error) {
+      console.error('Error fetching activity data:', error);
+      toast.error('Error loading activity data');
+      setActivityData([]);
+      setActiveMembers([]);
+    }
+  }
+
+  // Handle creating a new team
+  async function handleCreateTeam() {
+    try {
+      // Show a modal to collect team information
+      const teamName = prompt('Enter team name:');
+      if (!teamName) return;
+      
+      const teamDescription = prompt('Enter team description (optional):');
+      
+      const response = await fetch('/api/teams', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: teamName,
+          description: teamDescription,
+          settings: {
+            type: 'operations',
+            tags: ['monitoring', 'alerts']
+          }
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create team');
+      }
+      
+      const data = await response.json();
+      
+      // Add the new team to state
+      setTeams(prev => [...prev, {
+        id: data.team._id,
+        name: data.team.name,
+        description: data.team.description || 'No description provided',
+        type: 'operations',
+        members: [{
+          id: data.team.owner,
+          name: 'You',
+          role: 'admin'
+        }],
+        services: 0,
+        activeIncidents: 0,
+        tags: ['monitoring', 'alerts']
+      }]);
+      
+      toast.success('Team created successfully');
+    } catch (error) {
+      console.error('Error creating team:', error);
+      toast.error(error.message || 'Failed to create team');
+    }
+  }
+
+  // Handle adding a team member
+  async function handleAddMember(e) {
+    e.preventDefault();
+    try {
+      if (!selectedTeam) {
+        toast.error('Please select a team');
+        return;
+      }
+      
+      if (!memberEmail) {
+        toast.error('Please enter member email');
+        return;
+      }
+      
+      if (!['admin', 'member', 'viewer'].includes(memberRole)) {
+        toast.error('Invalid role. Must be admin, member, or viewer.');
+        return;
+      }
+      
+      const response = await fetch('/api/teams/members', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          teamId: selectedTeam,
+          email: memberEmail,
+          role: memberRole
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add team member');
+      }
+      
+      const data = await response.json();
+      
+      // Update the teams state with the new member
+      setTeams(prev => prev.map(team => {
+        if (team.id === selectedTeam) {
+          return {
+            ...team,
+            members: [...team.members, {
+              id: data.member.userId,
+              name: data.member.name,
+              role: data.member.role
+            }]
+          };
+        }
+        return team;
+      }));
+      
+      toast.success(data.message || 'Member added successfully');
+      setAddMemberOpen(false);
+      
+      // Reset form fields
+      setSelectedTeam("");
+      setMemberEmail("");
+      setMemberRole("member");
+    } catch (error) {
+      console.error('Error adding team member:', error);
+      toast.error(error.message || 'Failed to add team member');
+    }
+  }
+
+  // Handle refresh
+  async function handleRefresh() {
+    try {
+      await fetchTeams();
+      toast.success('Teams data refreshed');
+    } catch (error) {
+      console.error('Error refreshing teams data:', error);
+      toast.error(error.message || 'Failed to refresh teams data');
+    }
+  }
   
   return (
     <div className="container mx-auto py-8 px-4">
@@ -284,16 +460,93 @@ export default function TeamsPage() {
         </div>
         
         <div className="flex gap-3">
-          <Button>
+          <Button onClick={handleCreateTeam}>
             <PlusIcon className="h-5 w-5 mr-2" />
             Create Team
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => setAddMemberOpen(true)}>
             <UserPlusIcon className="h-5 w-5 mr-2" />
             Add Member
           </Button>
+          <Button variant="secondary" onClick={handleRefresh} disabled={isLoading}>
+            <ArrowPathIcon className={`h-5 w-5 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
       </div>
+      
+      {/* Add Member Dialog */}
+      <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Add Team Member</DialogTitle>
+            <DialogDescription>
+              Add a new member to one of your teams
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddMember}>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="team" className="text-right">
+                  Team
+                </Label>
+                <div className="col-span-3">
+                  <Select 
+                    value={selectedTeam} 
+                    onValueChange={setSelectedTeam}
+                  >
+                    <SelectTrigger id="team">
+                      <SelectValue placeholder="Select team" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teams.map(team => (
+                        <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="email" className="text-right">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={memberEmail}
+                  onChange={(e) => setMemberEmail(e.target.value)}
+                  placeholder="member@example.com"
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="role" className="text-right">
+                  Role
+                </Label>
+                <Select 
+                  value={memberRole} 
+                  onValueChange={setMemberRole}
+                >
+                  <SelectTrigger id="role" className="col-span-3">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="member">Member</SelectItem>
+                    <SelectItem value="viewer">Viewer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAddMemberOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">Add Member</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       
       <TeamStats stats={teamStats} />
       
@@ -370,85 +623,43 @@ export default function TeamsPage() {
             <CardContent className="p-0">
               <div className="p-6">
                 <div className="space-y-8">
-                  <div className="flex items-start gap-4">
-                    <Avatar>
-                      <AvatarImage src="/avatars/alex.jpg" alt="Alex Johnson" />
-                      <AvatarFallback>AJ</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Alex Johnson</span>
-                        <span className="text-sm text-neutral-500 dark:text-neutral-400">closed an incident</span>
+                  {activityData && activityData.length > 0 ? (
+                    activityData.map((activity, index) => (
+                      <div key={index} className="flex items-start gap-4">
+                        <Avatar>
+                          <AvatarImage src={activity.user?.avatar} alt={activity.user?.name} />
+                          <AvatarFallback>{activity.user?.name?.charAt(0) || 'U'}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{activity.user?.name}</span>
+                            <span className="text-sm text-neutral-500 dark:text-neutral-400">{activity.actionType}</span>
+                          </div>
+                          <p className="text-neutral-700 dark:text-neutral-300 mt-1">
+                            {activity.description}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                            <ClockIcon className="h-3 w-3" />
+                            <span>{activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'Unknown time'}</span>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-neutral-700 dark:text-neutral-300 mt-1">
-                        Resolved "API Gateway Performance Degradation" after implementing load balancing fix.
+                    ))
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <div className="rounded-full bg-neutral-100 dark:bg-neutral-800 p-3 mb-4">
+                        <ChartBarIcon className="h-6 w-6 text-neutral-500" />
+                      </div>
+                      <h3 className="text-lg font-medium mb-1">No activity yet</h3>
+                      <p className="text-neutral-500 dark:text-neutral-400 text-center max-w-md">
+                        Team activity will appear here when members take actions like resolving incidents or adding services.
                       </p>
-                      <div className="flex items-center gap-2 mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                        <ClockIcon className="h-3 w-3" />
-                        <span>2 hours ago</span>
-                      </div>
+                      <Button variant="outline" className="mt-4" onClick={handleRefresh}>
+                        <ArrowPathIcon className="h-4 w-4 mr-2" />
+                        Refresh Activity
+                      </Button>
                     </div>
-                  </div>
-                  
-                  <div className="flex items-start gap-4">
-                    <Avatar>
-                      <AvatarImage src="/avatars/sophia.jpg" alt="Sophia Lee" />
-                      <AvatarFallback>SL</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Sophia Lee</span>
-                        <span className="text-sm text-neutral-500 dark:text-neutral-400">added a new service</span>
-                      </div>
-                      <p className="text-neutral-700 dark:text-neutral-300 mt-1">
-                        Added "Payment API Gateway" to monitoring with enhanced security checks.
-                      </p>
-                      <div className="flex items-center gap-2 mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                        <ClockIcon className="h-3 w-3" />
-                        <span>4 hours ago</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-start gap-4">
-                    <Avatar>
-                      <AvatarImage src="/avatars/emma.jpg" alt="Emma Davis" />
-                      <AvatarFallback>ED</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Emma Davis</span>
-                        <span className="text-sm text-neutral-500 dark:text-neutral-400">updated alert thresholds</span>
-                      </div>
-                      <p className="text-neutral-700 dark:text-neutral-300 mt-1">
-                        Modified response time thresholds for frontend services from 500ms to 400ms.
-                      </p>
-                      <div className="flex items-center gap-2 mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                        <ClockIcon className="h-3 w-3" />
-                        <span>6 hours ago</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-start gap-4">
-                    <Avatar>
-                      <AvatarImage src="/avatars/ethan.jpg" alt="Ethan Wilson" />
-                      <AvatarFallback>EW</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Ethan Wilson</span>
-                        <span className="text-sm text-neutral-500 dark:text-neutral-400">added team member</span>
-                      </div>
-                      <p className="text-neutral-700 dark:text-neutral-300 mt-1">
-                        Added Mia Johnson to the Data Engineering team as ETL Developer.
-                      </p>
-                      <div className="flex items-center gap-2 mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                        <ClockIcon className="h-3 w-3" />
-                        <span>Yesterday at 15:30</span>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </CardContent>

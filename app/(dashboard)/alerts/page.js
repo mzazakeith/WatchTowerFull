@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { toast } from 'sonner';
 import { 
   BellIcon, 
   ExclamationTriangleIcon, 
@@ -23,104 +24,6 @@ import {
   ChevronUpIcon,
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
-
-// Mock data for alerts
-const mockAlerts = [
-  { 
-    id: '1', 
-    service: 'Analytics API', 
-    message: 'Response time exceeded critical threshold (4250ms)', 
-    severity: 'critical', 
-    status: 'open',
-    createdAt: new Date(Date.now() - 5 * 60000),
-    details: {
-      responseTime: 4250,
-      endpoint: '/api/analytics/metrics',
-      attempts: 3,
-      threshold: 3000
-    }
-  },
-  { 
-    id: '2', 
-    service: 'Payment Processing', 
-    message: 'Service is down - Connection refused', 
-    severity: 'down', 
-    status: 'acknowledged',
-    createdAt: new Date(Date.now() - 12 * 60000),
-    details: {
-      error: 'ECONNREFUSED',
-      endpoint: 'https://payments.example.com/api/health',
-      attempts: 5
-    }
-  },
-  { 
-    id: '3', 
-    service: 'Database Service', 
-    message: 'Response time exceeded warning threshold (1350ms)', 
-    severity: 'warning', 
-    status: 'open',
-    createdAt: new Date(Date.now() - 25 * 60000),
-    details: {
-      responseTime: 1350,
-      query: 'SELECT * FROM customers WHERE...',
-      threshold: 1000
-    }
-  },
-  { 
-    id: '4', 
-    service: 'API Gateway', 
-    message: 'Unusual traffic pattern detected - 500% increase in requests', 
-    severity: 'warning', 
-    status: 'open',
-    createdAt: new Date(Date.now() - 45 * 60000),
-    details: {
-      currentRate: '150 req/s',
-      normalRate: '30 req/s',
-      endpoint: '/api/users/*'
-    }
-  },
-  { 
-    id: '5', 
-    service: 'CDN Service', 
-    message: 'Increased error rate - 5% of requests failing with 503', 
-    severity: 'warning', 
-    status: 'resolved',
-    createdAt: new Date(Date.now() - 120 * 60000),
-    resolvedAt: new Date(Date.now() - 90 * 60000),
-    details: {
-      errorRate: '5%',
-      errorCode: 503,
-      affectedRegions: ['us-east', 'eu-west']
-    }
-  },
-  { 
-    id: '6', 
-    service: 'Authentication Service', 
-    message: 'High number of failed login attempts', 
-    severity: 'warning', 
-    status: 'resolved',
-    createdAt: new Date(Date.now() - 240 * 60000),
-    resolvedAt: new Date(Date.now() - 210 * 60000),
-    details: {
-      failedAttempts: 120,
-      timeWindow: '10 minutes',
-      normalRate: '5-10 per 10 min'
-    }
-  },
-  { 
-    id: '7', 
-    service: 'Storage Service', 
-    message: 'Disk usage above 90% threshold', 
-    severity: 'critical', 
-    status: 'acknowledged',
-    createdAt: new Date(Date.now() - 60 * 60000),
-    details: {
-      diskUsage: '92%',
-      availableSpace: '80GB',
-      threshold: '90%'
-    }
-  },
-];
 
 // Helper functions
 function getSeverityIcon(severity, size = 6) {
@@ -156,7 +59,7 @@ function getSeverityBadge(severity) {
 
 function getStatusBadge(status) {
   const variants = {
-    open: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-900/50',
+    pending: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-900/50',
     acknowledged: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50',
     resolved: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-900/50',
   };
@@ -203,337 +106,447 @@ function formatDate(date) {
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState([]);
   const [filteredAlerts, setFilteredAlerts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAlert, setSelectedAlert] = useState(null);
-  const [severityFilter, setSeverityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [serviceFilter, setServiceFilter] = useState('all');
-  const [services, setServices] = useState([]);
-  const [activeTab, setActiveTab] = useState('all');
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [severityFilter, setSeverityFilter] = useState('all');
+  const [selectedAlert, setSelectedAlert] = useState(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [stats, setStats] = useState(null);
 
-  // Fetch alerts data (using mock data for now)
+  // Fetch alerts data and stats
   useEffect(() => {
-    // In production, this would fetch from the API
-    setAlerts(mockAlerts);
-    setFilteredAlerts(mockAlerts);
+    async function fetchData() {
+      try {
+        setIsLoading(true);
+        
+        const [alertsResponse, statsResponse] = await Promise.all([
+          fetch('/api/alerts'),
+          fetch('/api/dashboard/stats')
+        ]);
+        
+        if (!alertsResponse.ok) {
+          throw new Error('Failed to fetch alerts');
+        }
+        
+        if (!statsResponse.ok) {
+          throw new Error('Failed to fetch alert statistics');
+        }
+        
+        const alertsData = await alertsResponse.json();
+        const statsData = await statsResponse.json();
+        
+        setAlerts(alertsData.alerts);
+        setFilteredAlerts(alertsData.alerts);
+        setStats(statsData.alerts);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching data:', err);
+        setError(err.message || 'Failed to load data');
+        toast.error(err.message || 'Failed to load data');
+      } finally {
+        setIsLoading(false);
+      }
+    }
     
-    // Extract unique services for the service filter
-    const uniqueServices = [...new Set(mockAlerts.map(alert => alert.service))];
-    setServices(uniqueServices);
+    fetchData();
   }, []);
 
-  // Apply filters
+  // Filter alerts when filters change
   useEffect(() => {
-    let filtered = alerts;
-    
-    // Apply status filter based on active tab
-    if (activeTab !== 'all') {
-      filtered = filtered.filter(alert => alert.status === activeTab);
-    }
+    let result = [...alerts];
     
     // Apply search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(alert => 
-        alert.service.toLowerCase().includes(query) ||
+      result = result.filter(alert => 
+        (alert.serviceId?.name?.toLowerCase().includes(query)) ||
         alert.message.toLowerCase().includes(query)
       );
     }
     
-    // Apply severity filter
-    if (severityFilter !== 'all') {
-      filtered = filtered.filter(alert => alert.severity === severityFilter);
-    }
-    
     // Apply status filter
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(alert => alert.status === statusFilter);
+      result = result.filter(alert => alert.status === statusFilter);
     }
     
-    // Apply service filter
-    if (serviceFilter !== 'all') {
-      filtered = filtered.filter(alert => alert.service === serviceFilter);
+    // Apply severity filter
+    if (severityFilter !== 'all') {
+      result = result.filter(alert => alert.severity === severityFilter);
     }
     
-    setFilteredAlerts(filtered);
-  }, [alerts, searchQuery, severityFilter, statusFilter, serviceFilter, activeTab]);
+    setFilteredAlerts(result);
+  }, [alerts, searchQuery, statusFilter, severityFilter]);
 
-  // Alert counts for badges
-  const openCount = alerts.filter(alert => alert.status === 'open').length;
-  const acknowledgedCount = alerts.filter(alert => alert.status === 'acknowledged').length;
-  const resolvedCount = alerts.filter(alert => alert.status === 'resolved').length;
+  // Handle alert status update
+  async function updateAlertStatus(alertId, newStatus) {
+    try {
+      setIsUpdating(true);
+      
+      const response = await fetch(`/api/alerts/${alertId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to update alert to ${newStatus}`);
+      }
+      
+      // Update local state
+      setAlerts(prevAlerts => 
+        prevAlerts.map(alert => 
+          alert._id === alertId 
+            ? { ...alert, status: newStatus } 
+            : alert
+        )
+      );
+      
+      toast.success(`Alert ${newStatus} successfully`);
+      
+      // Close dialog if open
+      if (isDialogOpen) {
+        setIsDialogOpen(false);
+      }
+    } catch (error) {
+      console.error('Error updating alert:', error);
+      toast.error(error.message || 'Failed to update alert');
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  // Handle refresh
+  async function handleRefresh() {
+    try {
+      setIsLoading(true);
+      
+      const [alertsResponse, statsResponse] = await Promise.all([
+        fetch('/api/alerts'),
+        fetch('/api/dashboard/stats')
+      ]);
+      
+      if (!alertsResponse.ok || !statsResponse.ok) {
+        throw new Error('Failed to refresh data');
+      }
+      
+      const alertsData = await alertsResponse.json();
+      const statsData = await statsResponse.json();
+      
+      setAlerts(alertsData.alerts);
+      setStats(statsData.alerts);
+      toast.success('Alerts refreshed');
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      toast.error(error.message || 'Failed to refresh data');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // View alert details
+  function viewAlertDetails(alert) {
+    setSelectedAlert(alert);
+    setIsDialogOpen(true);
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Alerts</h1>
-          <p className="text-neutral-500 dark:text-neutral-400 mt-1">
-            Monitor and manage alerts across your services
+          <h1 className="text-2xl font-bold mb-2">Alerts</h1>
+          <p className="text-neutral-500 dark:text-neutral-400">
+            Monitor and manage alerts from your services
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" className="flex items-center gap-1">
-            <ArrowPathIcon className="w-4 h-4" />
-            <span>Refresh</span>
-          </Button>
-        </div>
+        <Button onClick={handleRefresh} variant="outline" disabled={isLoading}>
+          <ArrowPathIcon className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
-      {/* Tabs navigation */}
-      <Tabs defaultValue={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
-          <TabsList className="w-full sm:w-auto grid grid-cols-3">
-            <TabsTrigger value="all" className="relative">
-              All
-              <Badge className="ml-2 bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
-                {alerts.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="open" className="relative">
-              Active
-              <Badge className="ml-2 bg-blue-200 text-blue-700 dark:bg-blue-700 dark:text-blue-200">
-                {openCount + acknowledgedCount}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="resolved" className="relative">
-              Resolved
-              <Badge className="ml-2 bg-green-200 text-green-700 dark:bg-green-700 dark:text-green-200">
-                {resolvedCount}
-              </Badge>
-            </TabsTrigger>
-          </TabsList>
-          
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1 sm:min-w-[240px]">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-neutral-400" />
-              <Input 
-                placeholder="Search alerts..." 
-                className="pl-9"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <Button 
-              variant="outline" 
-              size="icon" 
-              className={isFilterOpen ? 'bg-neutral-100 dark:bg-neutral-800' : ''}
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-            >
-              <FunnelIcon className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-        
-        {/* Filters row */}
-        {isFilterOpen && (
-          <Card className="mb-4 border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm">
-            <CardContent className="p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Alert Statistics */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex justify-between items-center">
                 <div>
-                  <label className="text-xs font-medium mb-1.5 block">Severity</label>
-                  <Select value={severityFilter} onValueChange={setSeverityFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Filter by severity" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Severities</SelectItem>
-                      <SelectItem value="down">Down</SelectItem>
-                      <SelectItem value="critical">Critical</SelectItem>
-                      <SelectItem value="warning">Warning</SelectItem>
-                      <SelectItem value="info">Info</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-sm">Total Alerts</p>
+                  <p className="text-2xl font-bold">{stats.total}</p>
                 </div>
-                
-                <div>
-                  <label className="text-xs font-medium mb-1.5 block">Status</label>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="open">Open</SelectItem>
-                      <SelectItem value="acknowledged">Acknowledged</SelectItem>
-                      <SelectItem value="resolved">Resolved</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="text-xs font-medium mb-1.5 block">Service</label>
-                  <Select value={serviceFilter} onValueChange={setServiceFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Filter by service" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Services</SelectItem>
-                      {services.map(service => (
-                        <SelectItem key={service} value={service}>{service}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="bg-blue-100 p-3 rounded-full dark:bg-blue-900/30">
+                  <BellIcon className="h-6 w-6 text-blue-500" />
                 </div>
               </div>
             </CardContent>
           </Card>
-        )}
-
-        {/* Alert List */}
-        <Card className="border-none shadow-sm bg-white dark:bg-neutral-900 overflow-hidden">
-          {filteredAlerts.length > 0 ? (
-            <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {filteredAlerts.map(alert => (
-                <div 
-                  key={alert.id} 
-                  className="p-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer"
-                  onClick={() => setSelectedAlert(alert)}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0 mt-1">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center 
-                        ${alert.severity === 'down' ? 'bg-red-100 dark:bg-red-900/20' : 
-                          alert.severity === 'critical' ? 'bg-purple-100 dark:bg-purple-900/20' : 
-                          'bg-yellow-100 dark:bg-yellow-900/20'}`}
-                      >
-                        {getSeverityIcon(alert.severity)}
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="font-medium truncate">{alert.service}</h3>
-                          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{alert.message}</p>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {getSeverityBadge(alert.severity)}
-                          {getStatusBadge(alert.status)}
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-4 mt-3 text-xs text-neutral-500 dark:text-neutral-400">
-                        <div className="flex items-center gap-1">
-                          <ClockIcon className="w-3.5 h-3.5" />
-                          <span>{timeAgo(alert.createdAt)}</span>
-                        </div>
-                        {alert.status === 'resolved' && alert.resolvedAt && (
-                          <div className="flex items-center gap-1">
-                            <CheckCircleIcon className="w-3.5 h-3.5 text-green-500" />
-                            <span>Resolved {timeAgo(alert.resolvedAt)}</span>
-                          </div>
-                        )}
-                        <Button variant="ghost" size="sm" className="ml-auto p-1 h-auto text-xs">
-                          <EyeIcon className="w-3.5 h-3.5 mr-1" />
-                          Details
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-sm">Active Alerts</p>
+                  <p className="text-2xl font-bold">{stats.active}</p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-16">
-              <CheckCircleIcon className="w-12 h-12 text-green-500 mx-auto mb-4" />
-              <h3 className="text-lg font-medium">No alerts matching your filters</h3>
-              <p className="text-neutral-500 dark:text-neutral-400 mt-1 max-w-md mx-auto">
-                Try adjusting your filters or search terms to find what you're looking for.
-              </p>
+                <div className="bg-yellow-100 p-3 rounded-full dark:bg-yellow-900/30">
+                  <ExclamationTriangleIcon className="h-6 w-6 text-yellow-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-sm">Last 24 Hours</p>
+                  <p className="text-2xl font-bold">{stats.lastDay}</p>
+                </div>
+                <div className="bg-purple-100 p-3 rounded-full dark:bg-purple-900/30">
+                  <ClockIcon className="h-6 w-6 text-purple-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-sm">Resolution Rate</p>
+                  <p className="text-2xl font-bold">
+                    {stats.total > 0 
+                      ? `${Math.round((stats.byStatus.resolved / stats.total) * 100)}%` 
+                      : '100%'}
+                  </p>
+                </div>
+                <div className="bg-green-100 p-3 rounded-full dark:bg-green-900/30">
+                  <CheckCircleIcon className="h-6 w-6 text-green-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-500" />
+          <Input
+            placeholder="Search alerts..."
+            className="pl-9"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="acknowledged">Acknowledged</SelectItem>
+            <SelectItem value="resolved">Resolved</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={severityFilter} onValueChange={setSeverityFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Filter by severity" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Severities</SelectItem>
+            <SelectItem value="warning">Warning</SelectItem>
+            <SelectItem value="critical">Critical</SelectItem>
+            <SelectItem value="down">Down</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Alerts List */}
+      {isLoading ? (
+        <div className="flex justify-center items-center h-64">
+          <ArrowPathIcon className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center h-64">
+            <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mb-4" />
+            <p className="text-lg font-medium">{error}</p>
+            <Button onClick={handleRefresh} variant="outline" className="mt-4">
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      ) : filteredAlerts.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center h-64">
+            <CheckCircleIcon className="h-12 w-12 text-green-500 mb-4" />
+            <p className="text-lg font-medium">No alerts found</p>
+            <p className="text-neutral-500 dark:text-neutral-400 mt-1 text-center max-w-md">
+              {alerts.length > 0 
+                ? 'Try adjusting your filters to see more results' 
+                : 'All your services are running smoothly. No alerts have been generated.'}
+            </p>
+            {alerts.length > 0 && (
               <Button 
                 variant="outline" 
                 className="mt-4"
                 onClick={() => {
                   setSearchQuery('');
-                  setSeverityFilter('all');
                   setStatusFilter('all');
-                  setServiceFilter('all');
-                  setActiveTab('all');
+                  setSeverityFilter('all');
                 }}
               >
-                Reset filters
+                Clear Filters
               </Button>
-            </div>
-          )}
+            )}
+          </CardContent>
         </Card>
-      </Tabs>
-
-      {/* Alert Detail Modal */}
-      {selectedAlert && (
-        <Dialog open={!!selectedAlert} onOpenChange={(open) => !open && setSelectedAlert(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                {getSeverityIcon(selectedAlert.severity, 5)}
-                <span>Alert Details</span>
-              </DialogTitle>
-              <DialogDescription>
-                Detailed information about this alert
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="space-y-4 mt-2">
-              <div className="flex flex-wrap justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  {getSeverityBadge(selectedAlert.severity)}
-                  {getStatusBadge(selectedAlert.status)}
-                </div>
-                <div className="text-sm text-neutral-500 dark:text-neutral-400">
-                  Alert ID: {selectedAlert.id}
-                </div>
-              </div>
-              
-              <div className="border-t border-b border-neutral-200 dark:border-neutral-800 py-3">
-                <h3 className="font-medium text-lg">{selectedAlert.service}</h3>
-                <p className="text-neutral-600 dark:text-neutral-300 mt-1">{selectedAlert.message}</p>
-                <div className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
-                  Created: {formatDate(selectedAlert.createdAt)}
-                </div>
-                {selectedAlert.resolvedAt && (
-                  <div className="text-sm text-green-600 dark:text-green-400 mt-1">
-                    Resolved: {formatDate(selectedAlert.resolvedAt)}
+      ) : (
+        <div className="space-y-4">
+          {filteredAlerts.map((alert) => (
+            <Card key={alert._id} className="hover:shadow-md transition-all duration-200">
+              <CardContent className="p-4">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      {getSeverityBadge(alert.severity)}
+                      {getStatusBadge(alert.status)}
+                      <span className="text-sm text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+                        <ClockIcon className="h-3 w-3" />
+                        {timeAgo(new Date(alert.timestamp))}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <ServerIcon className="h-4 w-4 text-neutral-500" />
+                      <span className="font-medium">{alert.serviceId?.name || 'Unknown Service'}</span>
+                    </div>
+                    <p className="text-neutral-700 dark:text-neutral-300">{alert.message}</p>
                   </div>
-                )}
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => viewAlertDetails(alert)}
+                    >
+                      <EyeIcon className="h-4 w-4 mr-1" />
+                      Details
+                    </Button>
+                    {alert.status === 'pending' && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => updateAlertStatus(alert._id, 'acknowledged')}
+                        disabled={isUpdating}
+                      >
+                        Acknowledge
+                      </Button>
+                    )}
+                    {(alert.status === 'pending' || alert.status === 'acknowledged') && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => updateAlertStatus(alert._id, 'resolved')}
+                        disabled={isUpdating}
+                      >
+                        Resolve
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Alert Details Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Alert Details</DialogTitle>
+            <DialogDescription>
+              Detailed information about this alert
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAlert && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                {getSeverityBadge(selectedAlert.severity)}
+                {getStatusBadge(selectedAlert.status)}
               </div>
               
               <div>
-                <h4 className="font-medium text-sm mb-2">Alert Details</h4>
-                <div className="bg-neutral-50 dark:bg-neutral-800 rounded-md p-3 space-y-2">
-                  {Object.entries(selectedAlert.details).map(([key, value]) => (
-                    <div key={key} className="grid grid-cols-3 text-sm">
-                      <div className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1')}</div>
-                      <div className="col-span-2">{value.toString()}</div>
-                    </div>
-                  ))}
+                <h3 className="text-lg font-semibold">{selectedAlert.serviceId?.name || 'Unknown Service'}</h3>
+                <p className="text-neutral-700 dark:text-neutral-300">{selectedAlert.message}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-neutral-500 dark:text-neutral-400">Metric</p>
+                  <p>{selectedAlert.metric}</p>
+                </div>
+                <div>
+                  <p className="text-neutral-500 dark:text-neutral-400">Value</p>
+                  <p>{typeof selectedAlert.value === 'object' 
+                    ? JSON.stringify(selectedAlert.value) 
+                    : selectedAlert.value}</p>
+                </div>
+                <div>
+                  <p className="text-neutral-500 dark:text-neutral-400">Time</p>
+                  <p>{new Date(selectedAlert.timestamp).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-neutral-500 dark:text-neutral-400">Service URL</p>
+                  <p className="truncate">{selectedAlert.serviceId?.url || 'N/A'}</p>
                 </div>
               </div>
               
-              <div className="flex justify-between gap-2 pt-2">
+              {selectedAlert.acknowledgedBy && (
                 <div>
-                  <Button variant="destructive" size="sm">
-                    Delete Alert
+                  <p className="text-neutral-500 dark:text-neutral-400">Acknowledged by</p>
+                  <p>{selectedAlert.acknowledgedBy.name} at {new Date(selectedAlert.acknowledgedAt).toLocaleString()}</p>
+                </div>
+              )}
+              
+              {selectedAlert.resolvedBy && (
+                <div>
+                  <p className="text-neutral-500 dark:text-neutral-400">Resolved by</p>
+                  <p>{selectedAlert.resolvedBy.name} at {new Date(selectedAlert.resolvedAt).toLocaleString()}</p>
+                </div>
+              )}
+              
+              <div className="flex justify-end gap-2 pt-4">
+                {selectedAlert.status === 'pending' && (
+                  <Button 
+                    variant="outline"
+                    onClick={() => updateAlertStatus(selectedAlert._id, 'acknowledged')}
+                    disabled={isUpdating}
+                  >
+                    Acknowledge
                   </Button>
-                </div>
-                <div className="space-x-2">
-                  {selectedAlert.status === 'open' && (
-                    <Button variant="outline" size="sm">
-                      Acknowledge
-                    </Button>
-                  )}
-                  {selectedAlert.status !== 'resolved' && (
-                    <Button size="sm">
-                      {selectedAlert.status === 'acknowledged' ? 'Resolve' : 'Acknowledge & Resolve'}
-                    </Button>
-                  )}
-                </div>
+                )}
+                {(selectedAlert.status === 'pending' || selectedAlert.status === 'acknowledged') && (
+                  <Button 
+                    variant="default"
+                    onClick={() => updateAlertStatus(selectedAlert._id, 'resolved')}
+                    disabled={isUpdating}
+                  >
+                    Resolve
+                  </Button>
+                )}
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
-} 
+}
+

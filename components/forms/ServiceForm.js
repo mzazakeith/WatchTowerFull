@@ -3,553 +3,534 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createServiceSchema } from '@/lib/validators/service';
+import { z } from 'zod';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
-const checkTypes = [
-  { id: 'http', name: 'HTTP/HTTPS', description: 'HTTP or HTTPS endpoint check' },
-  { id: 'ping', name: 'Ping', description: 'ICMP ping check' },
-  { id: 'dns', name: 'DNS', description: 'DNS resolution check' },
-  { id: 'port', name: 'Port', description: 'TCP port check' },
-  { id: 'tcp', name: 'TCP', description: 'Custom TCP connection check' },
-  { id: 'ssl', name: 'SSL', description: 'SSL certificate check' },
-  { id: 'custom', name: 'Custom', description: 'Custom script check' },
-];
+// Define the validation schema
+const serviceSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(60, 'Name cannot be more than 60 characters'),
+  description: z.string().max(200, 'Description cannot be more than 200 characters').optional(),
+  url: z.string().min(1, 'URL is required'),
+  checkType: z.enum(['http', 'ping', 'tcp', 'dns', 'ssl', 'port', 'custom']),
+  interval: z.number().min(10, 'Interval must be at least 10 seconds').default(60),
+  timeout: z.number().min(1, 'Timeout must be at least 1 second').default(30),
+  expectedStatusCode: z.number().optional(),
+  expectedResponseContent: z.string().optional(),
+  httpMethod: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH']).optional(),
+  followRedirects: z.boolean().default(true),
+  verifySSL: z.boolean().default(true),
+  port: z.number().min(1, 'Port must be at least 1').max(65535, 'Port cannot be more than 65535').optional(),
+  tags: z.array(z.string()).default([]),
+  alertThresholds: z.object({
+    responseTime: z.object({
+      warning: z.number().default(1000),
+      critical: z.number().default(3000),
+    }),
+    availability: z.object({
+      warning: z.number().default(95),
+      critical: z.number().default(90),
+    }),
+  }).optional(),
+});
 
-const httpMethods = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'];
-
-export default function ServiceForm({ service, onSubmit }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+export default function ServiceForm({ initialData, onSubmit }) {
   const [activeTab, setActiveTab] = useState('basic');
-  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newTag, setNewTag] = useState('');
+  const [requestHeaders, setRequestHeaders] = useState(initialData?.requestHeaders || []);
+  const [newHeaderKey, setNewHeaderKey] = useState('');
+  const [newHeaderValue, setNewHeaderValue] = useState('');
+
+  // Initialize form with default values or initial data
   const form = useForm({
-    resolver: zodResolver(createServiceSchema),
-    defaultValues: {
-      name: service?.name || '',
-      description: service?.description || '',
-      url: service?.url || '',
-      checkType: service?.checkType || 'http',
-      interval: service?.interval || 60,
-      timeout: service?.timeout || 30,
-      expectedStatusCode: service?.expectedStatusCode || 200,
-      expectedResponseContent: service?.expectedResponseContent || '',
-      httpMethod: service?.httpMethod || 'GET',
-      requestHeaders: service?.requestHeaders || {},
-      requestBody: service?.requestBody || '',
-      followRedirects: service?.followRedirects ?? true,
-      verifySSL: service?.verifySSL ?? true,
-      port: service?.port || null,
-      tags: service?.tags || [],
+    resolver: zodResolver(serviceSchema),
+    defaultValues: initialData || {
+      name: '',
+      description: '',
+      url: '',
+      checkType: 'http',
+      interval: 60,
+      timeout: 30,
+      expectedStatusCode: 200,
+      expectedResponseContent: '',
+      httpMethod: 'GET',
+      followRedirects: true,
+      verifySSL: true,
+      tags: [],
       alertThresholds: {
         responseTime: {
-          warning: service?.alertThresholds?.responseTime?.warning || 1000,
-          critical: service?.alertThresholds?.responseTime?.critical || 3000,
+          warning: 1000,
+          critical: 3000,
         },
         availability: {
-          warning: service?.alertThresholds?.availability?.warning || 95,
-          critical: service?.alertThresholds?.availability?.critical || 90,
+          warning: 95,
+          critical: 90,
         },
       },
     },
   });
 
-  const selectedCheckType = form.watch('checkType');
-
-  async function handleSubmit(data) {
+  // Handle form submission
+  const handleFormSubmit = async (data) => {
     setIsSubmitting(true);
     try {
-      // In production, this would call the API
-      // const response = await fetch('/api/services', {
-      //   method: service ? 'PUT' : 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(data),
-      // });
-      // const result = await response.json();
+      // Convert requestHeaders array to Map format for API
+      const headersMap = {};
+      requestHeaders.forEach(header => {
+        headersMap[header.key] = header.value;
+      });
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Add headers to data
+      const serviceData = {
+        ...data,
+        requestHeaders: headersMap,
+      };
       
-      toast.success(`Service ${service ? 'updated' : 'created'} successfully`);
-      
-      if (onSubmit) {
-        onSubmit(data);
-      }
+      await onSubmit(serviceData);
+      toast.success('Service saved successfully');
     } catch (error) {
-      toast.error(`Failed to ${service ? 'update' : 'create'} service`);
-      console.error(error);
+      console.error('Error saving service:', error);
+      toast.error('Failed to save service');
     } finally {
       setIsSubmitting(false);
     }
-  }
+  };
+
+  // Handle adding a new tag
+  const handleAddTag = () => {
+    if (!newTag.trim()) return;
+    
+    const currentTags = form.getValues('tags') || [];
+    if (!currentTags.includes(newTag)) {
+      form.setValue('tags', [...currentTags, newTag]);
+    }
+    setNewTag('');
+  };
+
+  // Handle removing a tag
+  const handleRemoveTag = (tagToRemove) => {
+    const currentTags = form.getValues('tags') || [];
+    form.setValue('tags', currentTags.filter(tag => tag !== tagToRemove));
+  };
+
+  // Handle adding a new header
+  const handleAddHeader = () => {
+    if (!newHeaderKey.trim() || !newHeaderValue.trim()) return;
+    
+    setRequestHeaders([...requestHeaders, { key: newHeaderKey, value: newHeaderValue }]);
+    setNewHeaderKey('');
+    setNewHeaderValue('');
+  };
+
+  // Handle removing a header
+  const handleRemoveHeader = (index) => {
+    const updatedHeaders = [...requestHeaders];
+    updatedHeaders.splice(index, 1);
+    setRequestHeaders(updatedHeaders);
+  };
+
+  // Determine if additional fields should be shown based on check type
+  const showHttpFields = form.watch('checkType') === 'http';
+  const showPortField = ['tcp', 'port'].includes(form.watch('checkType'));
+  const showSslFields = ['http', 'ssl'].includes(form.watch('checkType'));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{service ? 'Edit Service' : 'Add New Service'}</CardTitle>
-        <CardDescription>
-          {service 
-            ? 'Update your service monitoring settings' 
-            : 'Configure a new service to monitor'
-          }
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid grid-cols-3 mb-6">
-                <TabsTrigger value="basic">Basic Settings</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced Settings</TabsTrigger>
-                <TabsTrigger value="alert">Alert Thresholds</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="basic" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Service Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="My API" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+    <form onSubmit={form.handleSubmit(handleFormSubmit)}>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid grid-cols-4 mb-6">
+          <TabsTrigger value="basic">Basic</TabsTrigger>
+          <TabsTrigger value="advanced">Advanced</TabsTrigger>
+          <TabsTrigger value="alerts">Alerts</TabsTrigger>
+          <TabsTrigger value="headers">Headers</TabsTrigger>
+        </TabsList>
+        
+        {/* Basic Settings Tab */}
+        <TabsContent value="basic">
+          <Card>
+            <CardHeader>
+              <CardTitle>Basic Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Service Name</Label>
+                  <Input
+                    id="name"
+                    placeholder="My API Service"
+                    {...form.register('name')}
+                    error={form.formState.errors.name?.message}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="checkType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Check Type</FormLabel>
-                        <Select 
-                          onValueChange={field.onChange} 
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a check type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {checkTypes.map(type => (
-                              <SelectItem key={type.id} value={type.id}>
-                                {type.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          {checkTypes.find(t => t.id === field.value)?.description}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="url"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>URL</FormLabel>
-                      <FormControl>
-                        <Input placeholder="https://api.example.com" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        The URL to check
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
+                  {form.formState.errors.name && (
+                    <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
                   )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="Description of this service"
-                          className="resize-none"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="url">URL / Endpoint</Label>
+                  <Input
+                    id="url"
+                    placeholder="https://api.example.com"
+                    {...form.register('url')}
+                  />
+                  {form.formState.errors.url && (
+                    <p className="text-sm text-red-500">{form.formState.errors.url.message}</p>
                   )}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="interval"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Check Interval (seconds)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min={10}
-                            {...field}
-                            onChange={e => field.onChange(parseInt(e.target.value, 10))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          How often to check this service
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="timeout"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Timeout (seconds)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min={1}
-                            {...field}
-                            onChange={e => field.onChange(parseInt(e.target.value, 10))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Maximum time to wait for a response
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
-              </TabsContent>
-
-              <TabsContent value="advanced" className="space-y-6">
-                {selectedCheckType === 'http' && (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <FormField
-                        control={form.control}
-                        name="httpMethod"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>HTTP Method</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select HTTP method" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {httpMethods.map(method => (
-                                  <SelectItem key={method} value={method}>
-                                    {method}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="expectedStatusCode"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Expected Status Code</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                {...field}
-                                onChange={e => field.onChange(parseInt(e.target.value, 10))}
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              The status code you expect
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <FormField
-                      control={form.control}
-                      name="expectedResponseContent"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Expected Response Content</FormLabel>
-                          <FormControl>
-                            <Input placeholder="String to check for in the response" {...field} />
-                          </FormControl>
-                          <FormDescription>
-                            Check if the response contains this content
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <FormField
-                        control={form.control}
-                        name="followRedirects"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Follow Redirects</FormLabel>
-                            <Select 
-                              onValueChange={value => field.onChange(value === 'true')} 
-                              defaultValue={field.value ? 'true' : 'false'}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Follow redirects?" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="true">Yes</SelectItem>
-                                <SelectItem value="false">No</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="verifySSL"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Verify SSL Certificate</FormLabel>
-                            <Select 
-                              onValueChange={value => field.onChange(value === 'true')} 
-                              defaultValue={field.value ? 'true' : 'false'}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Verify SSL?" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="true">Yes</SelectItem>
-                                <SelectItem value="false">No</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {['port', 'tcp'].includes(selectedCheckType) && (
-                  <FormField
-                    control={form.control}
-                    name="port"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Port Number</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min={1}
-                            max={65535}
-                            placeholder="80"
-                            {...field}
-                            value={field.value || ''}
-                            onChange={e => field.onChange(parseInt(e.target.value, 10) || null)}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          The port number to check
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                <FormField
-                  control={form.control}
-                  name="tags"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tags</FormLabel>
-                      <FormControl>
-                        <Input 
-                          placeholder="Comma-separated tags"
-                          {...field}
-                          value={field.value.join(', ')}
-                          onChange={e => {
-                            const tags = e.target.value
-                              .split(',')
-                              .map(tag => tag.trim())
-                              .filter(Boolean);
-                            field.onChange(tags);
-                          }}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Tags help organize and filter services
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </TabsContent>
-
-              <TabsContent value="alert" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="alertThresholds.responseTime.warning"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Response Time Warning (ms)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min={100}
-                            placeholder="1000"
-                            {...field}
-                            onChange={e => field.onChange(parseInt(e.target.value, 10))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Alert when response time exceeds this value
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="alertThresholds.responseTime.critical"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Response Time Critical (ms)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min={100}
-                            placeholder="3000"
-                            {...field}
-                            onChange={e => field.onChange(parseInt(e.target.value, 10))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Alert as critical when response time exceeds this value
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="alertThresholds.availability.warning"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Availability Warning (%)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min={50}
-                            max={99}
-                            placeholder="95"
-                            {...field}
-                            onChange={e => field.onChange(parseInt(e.target.value, 10))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Alert when availability falls below this percentage
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="alertThresholds.availability.critical"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Availability Critical (%)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min={50}
-                            max={99}
-                            placeholder="90"
-                            {...field}
-                            onChange={e => field.onChange(parseInt(e.target.value, 10))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Alert as critical when availability falls below this percentage
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            <CardFooter className="p-0">
-              <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2 w-full justify-end mt-6">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    // Navigate back or cancel
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 
-                    (service ? 'Updating...' : 'Creating...') : 
-                    (service ? 'Update Service' : 'Create Service')
-                  }
-                </Button>
               </div>
-            </CardFooter>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
-  );
-} 
+              
+              <div className="space-y-2">
+                <Label htmlFor="description">Description (Optional)</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Brief description of this service"
+                  {...form.register('description')}
+                />
+                {form.formState.errors.description && (
+                  <p className="text-sm text-red-500">{form.formState.errors.description.message}</p>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="checkType">Check Type</Label>
+                  <Select
+                    onValueChange={(value) => form.setValue('checkType', value)}
+                    defaultValue={form.getValues('checkType')}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select check type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="http">HTTP/HTTPS</SelectItem>
+                      <SelectItem value="ping">Ping</SelectItem>
+                      <SelectItem value="tcp">TCP</SelectItem>
+                      <SelectItem value="dns">DNS</SelectItem>
+                      <SelectItem value="port">Port</SelectItem>
+                      <SelectItem value="ssl">SSL Certificate</SelectItem>
+                      <SelectItem value="custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="interval">Check Interval (seconds)</Label>
+                  <Input
+                    id="interval"
+                    type="number"
+                    min="10"
+                    {...form.register('interval', { valueAsNumber: true })}
+                  />
+                  {form.formState.errors.interval && (
+                    <p className="text-sm text-red-500">{form.formState.errors.interval.message}</p>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Tags</Label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {form.watch('tags')?.map((tag, index) => (
+                    <Badge key={index} className="flex items-center gap-1">
+                      {tag}
+                      <XMarkIcon 
+                        className="w-3 h-3 cursor-pointer" 
+                        onClick={() => handleRemoveTag(tag)}
+                      />
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Add a tag"
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                  />
+                  <Button type="button" size="sm" onClick={handleAddTag}>
+                    <PlusIcon className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Advanced Settings Tab */}
+        <TabsContent value="advanced">
+          <Card>
+            <CardHeader>
+              <CardTitle>Advanced Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="timeout">Timeout (seconds)</Label>
+                  <Input
+                    id="timeout"
+                    type="number"
+                    min="1"
+                    {...form.register('timeout', { valueAsNumber: true })}
+                  />
+                  {form.formState.errors.timeout && (
+                    <p className="text-sm text-red-500">{form.formState.errors.timeout.message}</p>
+                  )}
+                </div>
+                
+                {showPortField && (
+                  <div className="space-y-2">
+                    <Label htmlFor="port">Port</Label>
+                    <Input
+                      id="port"
+                      type="number"
+                      min="1"
+                      max="65535"
+                      placeholder="443"
+                      {...form.register('port', { valueAsNumber: true })}
+                    />
+                    {form.formState.errors.port && (
+                      <p className="text-sm text-red-500">{form.formState.errors.port.message}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {showHttpFields && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="httpMethod">HTTP Method</Label>
+                      <Select
+                        onValueChange={(value) => form.setValue('httpMethod', value)}
+                        defaultValue={form.getValues('httpMethod')}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select HTTP method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="GET">GET</SelectItem>
+                          <SelectItem value="POST">POST</SelectItem>
+                          <SelectItem value="PUT">PUT</SelectItem>
+                          <SelectItem value="DELETE">DELETE</SelectItem>
+                          <SelectItem value="HEAD">HEAD</SelectItem>
+                          <SelectItem value="OPTIONS">OPTIONS</SelectItem>
+                          <SelectItem value="PATCH">PATCH</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="expectedStatusCode">Expected Status Code</Label>
+                      <Input
+                        id="expectedStatusCode"
+                        type="number"
+                        placeholder="200"
+                        {...form.register('expectedStatusCode', { valueAsNumber: true })}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="expectedResponseContent">Expected Response Content (Optional)</Label>
+                    <Textarea
+                      id="expectedResponseContent"
+                      placeholder="Content that should be present in the response"
+                      {...form.register('expectedResponseContent')}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="followRedirects"
+                        checked={form.watch('followRedirects')}
+                        onCheckedChange={(checked) => form.setValue('followRedirects', checked)}
+                      />
+                      <Label htmlFor="followRedirects">Follow Redirects</Label>
+                    </div>
+                    
+                    {showSslFields && (
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="verifySSL"
+                          checked={form.watch('verifySSL')}
+                          onCheckedChange={(checked) => form.setValue('verifySSL', checked)}
+                        />
+                        <Label htmlFor="verifySSL">Verify SSL Certificate</Label>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Alerts Tab */}
+        <TabsContent value="alerts">
+          <Card>
+            <CardHeader>
+              <CardTitle>Alert Thresholds</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium mb-2">Response Time</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="responseTimeWarning">Warning Threshold (ms)</Label>
+                    <Input
+                      id="responseTimeWarning"
+                      type="number"
+                      min="0"
+                      placeholder="1000"
+                      {...form.register('alertThresholds.responseTime.warning', { valueAsNumber: true })}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="responseTimeCritical">Critical Threshold (ms)</Label>
+                    <Input
+                      id="responseTimeCritical"
+                      type="number"
+                      min="0"
+                      placeholder="3000"
+                      {...form.register('alertThresholds.responseTime.critical', { valueAsNumber: true })}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-medium mb-2">Availability</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="availabilityWarning">Warning Threshold (%)</Label>
+                    <Input
+                      id="availabilityWarning"
+                      type="number"
+                      min="0"
+                      max="100"
+                      placeholder="95"
+                      {...form.register('alertThresholds.availability.warning', { valueAsNumber: true })}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="availabilityCritical">Critical Threshold (%)</Label>
+                    <Input
+                      id="availabilityCritical"
+                      type="number"
+                      min="0"
+                      max="100"
+                      placeholder="90"
+                      {...form.register('alertThresholds.availability.critical', { valueAsNumber: true })}
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Headers Tab (for HTTP checks) */}
+        <TabsContent value="headers">
+          <Card>
+            <CardHeader>
+              <CardTitle>Request Headers</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {showHttpFields ? (
+                <>
+                  <div className="space-y-4">
+                    {requestHeaders.map((header, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <Input
+                          value={header.key}
+                          onChange={(e) => {
+                            const updatedHeaders = [...requestHeaders];
+                            updatedHeaders[index].key = e.target.value;
+                            setRequestHeaders(updatedHeaders);
+                          }}
+                          placeholder="Header name"
+                          className="flex-1"
+                        />
+                        <Input
+                          value={header.value}
+                          onChange={(e) => {
+                            const updatedHeaders = [...requestHeaders];
+                            updatedHeaders[index].value = e.target.value;
+                            setRequestHeaders(updatedHeaders);
+                          }}
+                          placeholder="Header value"
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveHeader(index)}
+                        >
+                          <XMarkIcon className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 space-y-2">
+                      <Label htmlFor="headerKey">Header Name</Label>
+                      <Input
+                        id="headerKey"
+                        value={newHeaderKey}
+                        onChange={(e) => setNewHeaderKey(e.target.value)}
+                        placeholder="Content-Type"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <Label htmlFor="headerValue">Header Value</Label>
+                      <Input
+                        id="headerValue"
+                        value={newHeaderValue}
+                        onChange={(e) => setNewHeaderValue(e.target.value)}
+                        placeholder="application/json"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleAddHeader}
+                      className="mb-0.5"
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-neutral-500 dark:text-neutral-400">
+                  Headers are only available for HTTP/HTTPS checks.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+      
+      <div className="mt-6 flex justify-end space-x-4">
+            <Button type="button" variant="outline" onClick={() => window.history.back()}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : initialData ? 'Update Service' : 'Create Service'}
+            </Button>
+          </div>
+        </form>
+      );
+    }
