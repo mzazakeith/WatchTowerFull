@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics Test Page</title>
+</head>
+<body>
+  <h1>Analytics Test Page</h1>
+  <p>This page is used to test the WTower analytics script.</p>
+  <button id="testEvent">Trigger Test Event</button>
+
+  <!-- Include your analytics script -->
+  <script>
+    // Initialize analytics with localhost endpoint
+    (function() {
+      // Create a script element to load the analytics script
+      var script = document.createElement('script');
+      script.src = '/analytics-loader.js'; // We'll create this file next
+      script.async = true;
+      script.onload = function() {
+        // Initialize analytics when script is loaded
+        if (window.initAnalytics) {
+          window.initAnalytics({
+            endpoint: '/api/analytics/collect',
+            debug: true,
+            siteId: 'test-site-123'
+          });
+        }
+      };
+      document.head.appendChild(script);
+    })();
+  </script>
+
+  <!-- Test event trigger -->
+  <script>
+    document.getElementById('testEvent').addEventListener('click', function() {
+      if (window.trackEvent) {
+        window.trackEvent('button_click', {
+          buttonId: 'testEvent',
+          timestamp: new Date().toISOString()
+        });
+        alert('Event tracked! Check the console for details.');
+      } else {
+        alert('Analytics not initialized yet!');
+      }
+    });
+  </script>
+</body>
+</html>
