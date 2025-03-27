@@ -233,7 +233,10 @@
       visitorId,
       sessionId,
       timestamp: new Date().toISOString(),
-      data
+      data: {
+        ...data,
+        userAgent: navigator.userAgent // Ensure userAgent is included in every event
+      }
     };
     
     queue.push(event);

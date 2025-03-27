@@ -109,6 +109,9 @@ export async function POST(request) {
       let visitor = await Visitor.findOne({ visitorId, siteId });
       
       if (!visitor) {
+        // Parse user agent to extract browser, OS, and device info
+        const userAgentData = parseUserAgent(data.userAgent);
+        
         visitor = await Visitor.create({
           visitorId,
           siteId,
@@ -116,6 +119,10 @@ export async function POST(request) {
           lastSeen: new Date(timestamp),
           fingerprint: data.fingerprint,
           userAgent: data.userAgent,
+          // Add parsed user agent data
+          browser: userAgentData.browser,
+          os: userAgentData.os,
+          device: userAgentData.device,
           // Store masked IP if configured
           ipAddress: maskIpAddress(data.ipAddress || ip)
         });
@@ -253,4 +260,50 @@ function maskIpAddress(ip) {
   }
   
   return ip;
+}
+
+/**
+ * Parse user agent string to extract browser, OS, and device info
+ * @param {string} userAgent - User agent string
+ * @returns {Object} - Parsed user agent data
+ */
+function parseUserAgent(userAgent) {
+  if (!userAgent) return { browser: null, os: null, device: null };
+  
+  // Simple parsing logic
+  const result = {
+    browser: null,
+    os: null,
+    device: 'desktop' // Default to desktop
+  };
+  
+  // Browser detection
+  if (userAgent.includes('Firefox/')) {
+    result.browser = 'Firefox';
+  } else if (userAgent.includes('Chrome/') && !userAgent.includes('Edg/')) {
+    result.browser = 'Chrome';
+  } else if (userAgent.includes('Safari/') && !userAgent.includes('Chrome/')) {
+    result.browser = 'Safari';
+  } else if (userAgent.includes('Edg/')) {
+    result.browser = 'Edge';
+  } else if (userAgent.includes('MSIE') || userAgent.includes('Trident/')) {
+    result.browser = 'Internet Explorer';
+  }
+  
+  // OS detection
+  if (userAgent.includes('Windows')) {
+    result.os = 'Windows';
+  } else if (userAgent.includes('Mac OS X')) {
+    result.os = 'macOS';
+  } else if (userAgent.includes('Linux')) {
+    result.os = 'Linux';
+  } else if (userAgent.includes('Android')) {
+    result.os = 'Android';
+    result.device = 'mobile';
+  } else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
+    result.os = 'iOS';
+    result.device = userAgent.includes('iPad') ? 'tablet' : 'mobile';
+  }
+  
+  return result;
 }
