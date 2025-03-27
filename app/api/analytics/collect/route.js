@@ -112,6 +112,12 @@ export async function POST(request) {
         // Parse user agent to extract browser, OS, and device info
         const userAgentData = parseUserAgent(data.userAgent);
         
+        // Get the IP to use for geolocation
+        const geoIp = data.ipAddress || ip;
+        
+        // Get geolocation data from IP
+        const geoData = await getGeolocationData(geoIp);
+        
         visitor = await Visitor.create({
           visitorId,
           siteId,
@@ -123,12 +129,30 @@ export async function POST(request) {
           browser: userAgentData.browser,
           os: userAgentData.os,
           device: userAgentData.device,
-          // Store masked IP if configured
-          ipAddress: maskIpAddress(data.ipAddress || ip)
+          // Add geolocation data
+          country: geoData.country,
+          region: geoData.region,
+          city: geoData.city,
+          // Store the IP used for geolocation
+          geoIpAddress: geoIp,
+          // Store masked IP for privacy
+          ipAddress: maskIpAddress(geoIp)
         });
       } else {
         // Update last seen time
         visitor.lastSeen = new Date(timestamp);
+        
+        // Update geolocation if it's missing
+        if (!visitor.country && !visitor.region && !visitor.city) {
+          const geoIp = data.ipAddress || ip;
+          const geoData = await getGeolocationData(geoIp);
+          
+          visitor.country = geoData.country;
+          visitor.region = geoData.region;
+          visitor.city = geoData.city;
+          visitor.geoIpAddress = geoIp;
+        }
+        
         await visitor.save();
       }
       
@@ -136,18 +160,59 @@ export async function POST(request) {
       let session = await Session.findOne({ sessionId, visitorId, siteId });
       
       if (!session) {
+        // Extract referrer information
+        const referrer = data.referrer || null;
+        let referrerDomain = data.referrerDomain || null;
+        
+        // If we have a referrer but no domain, try to extract it
+        if (referrer && !referrerDomain) {
+          try {
+            referrerDomain = new URL(referrer).hostname;
+          } catch (e) {
+            console.error('Error parsing referrer URL:', e);
+          }
+        }
+        
+        // Extract UTM parameters
+        const utm = {
+          source: data.utm?.source || null,
+          medium: data.utm?.medium || null,
+          campaign: data.utm?.campaign || null,
+          term: data.utm?.term || null,
+          content: data.utm?.content || null
+        };
+        
+        // If we have UTM source but no referrer, use that as a hint
+        if (utm.source && !referrer) {
+          referrerDomain = utm.source;
+        }
+        
         session = await Session.create({
           sessionId,
           visitorId,
           siteId,
           startedAt: new Date(timestamp),
           lastActivity: new Date(timestamp),
-          referrer: data.referrer,
-          entryPage: data.path
+          referrer: referrer,
+          referrerDomain: referrerDomain,
+          entryPage: data.path,
+          utm: utm,
+          device: {
+            type: visitor.device || 'unknown',
+            browser: visitor.browser || 'unknown',
+            os: visitor.os || 'unknown'
+          }
         });
       } else {
         // Update session data
         session.lastActivity = new Date(timestamp);
+        
+        // Increment pageviews if this is a pageview event
+        if (type === 'pageview') {
+          session.pageviews = (session.pageviews || 1) + 1;
+          session.bounced = false; // No longer a bounce if they view multiple pages
+        }
+        
         await session.save();
       }
       
@@ -306,4 +371,37 @@ function parseUserAgent(userAgent) {
   }
   
   return result;
+}
+
+/**
+ * Get geolocation data from IP address
+ * @param {string} ip - IP address
+ * @returns {Object} - Geolocation data
+ */
+async function getGeolocationData(ip) {
+  // Skip for localhost or private IPs
+  if (!ip || ip === 'unknown' || ip === '::1' || ip.startsWith('127.') || 
+      ip.startsWith('192.168.') || ip.startsWith('10.')) {
+    return { country: null, region: null, city: null };
+  }
+  
+  try {
+    // Use free IP Geolocation API
+    const response = await fetch(`https://ipapi.co/${ip}/json/`);
+    
+    if (!response.ok) {
+      throw new Error(`Geolocation API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    return {
+      country: data.country_name,
+      region: data.region,
+      city: data.city
+    };
+  } catch (error) {
+    console.error('Error fetching geolocation data:', error);
+    return { country: null, region: null, city: null };
+  }
 }

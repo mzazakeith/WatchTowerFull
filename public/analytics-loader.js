@@ -193,23 +193,46 @@
   }
 
   // Track a pageview
-  function trackPageview(path) {
-    if (!isInitialized) return;
+  // Track pageview
+  function trackPageview() {
+    // Get referrer information
+    let referrer = document.referrer || null;
+    let referrerDomain = null;
     
-    const pageData = {
-      path: path || window.location.pathname,
-      referrer: document.referrer || null,
+    // Try to extract referrer domain if referrer exists
+    if (referrer) {
+      try {
+        referrerDomain = new URL(referrer).hostname;
+      } catch (e) {
+        console.error('Error parsing referrer URL:', e);
+      }
+    }
+    
+    // Check for UTM parameters in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const utmSource = urlParams.get('utm_source');
+    
+    // If we have UTM source but no referrer, we can use that as a hint
+    if (utmSource && !referrer) {
+      referrer = utmSource;
+      referrerDomain = utmSource;
+    }
+    
+    queueEvent('pageview', {
+      path: window.location.pathname,
       title: document.title,
       url: window.location.href,
-      loadTime: pageLoadTime,
-      userAgent: navigator.userAgent,
-      screenSize: `${window.innerWidth}x${window.innerHeight}`,
-      language: navigator.language,
-      timestamp: new Date().toISOString()
-    };
-    
-    queueEvent('pageview', pageData);
-    if (config.debug) console.log('Pageview tracked:', pageData);
+      referrer: referrer,
+      referrerDomain: referrerDomain,
+      utm: {
+        source: urlParams.get('utm_source'),
+        medium: urlParams.get('utm_medium'),
+        campaign: urlParams.get('utm_campaign'),
+        term: urlParams.get('utm_term'),
+        content: urlParams.get('utm_content')
+      },
+      loadTime: pageLoadTime
+    });
   }
 
   // Track a custom event
@@ -228,6 +251,9 @@
 
   // Queue an event for sending
   function queueEvent(type, data) {
+    // Get client IP (this will be overridden by the server, but we can try)
+    const clientIP = data.ipAddress || null;
+    
     const event = {
       type,
       visitorId,
@@ -235,7 +261,8 @@
       timestamp: new Date().toISOString(),
       data: {
         ...data,
-        userAgent: navigator.userAgent // Ensure userAgent is included in every event
+        userAgent: navigator.userAgent,
+        ipAddress: clientIP
       }
     };
     
