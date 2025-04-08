@@ -181,7 +181,7 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold mb-4">Coming Soon</h2>
             <p className="text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
-              We're constantly improving WatchTower. Here's what's coming in our roadmap.
+              We&apos;re constantly improving WatchTower. Here&apos;s what&apos;s coming in our roadmap.
             </p>
           </div>
           

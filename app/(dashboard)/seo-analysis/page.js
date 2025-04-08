@@ -291,7 +291,7 @@ export default function SEOAnalysisPage() {
         <div>
           <h1 className="text-2xl font-bold mb-2">SEO Analysis</h1>
           <p className="text-neutral-500 dark:text-neutral-400">
-            Analyze and optimize your website's search engine visibility
+            Analyze and optimize your website&apos;s search engine visibility
           </p>
         </div>
       </div>

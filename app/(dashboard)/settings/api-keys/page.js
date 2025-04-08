@@ -268,7 +268,7 @@ export default function ApiKeysPage() {
               <KeyIcon className="h-12 w-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" />
               <h3 className="text-lg font-medium mb-2">No API Keys Found</h3>
               <p className="text-neutral-500 dark:text-neutral-400 max-w-md mx-auto mb-6">
-                You haven't created any API keys yet. API keys allow secure access to the WatchTower API.
+                You haven&apos;t created any API keys yet. API keys allow secure access to the WatchTower API.
               </p>
               <Button onClick={() => setShowCreateDialog(true)}>
                 <PlusIcon className="h-4 w-4 mr-2" />
@@ -394,7 +394,7 @@ export default function ApiKeysPage() {
           <DialogHeader>
             <DialogTitle>API Key Created</DialogTitle>
             <DialogDescription>
-              Make sure to copy your API key now. You won't be able to see it again!
+              Make sure to copy your API key now. You won&apos;t be able to see it again!
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -402,7 +402,7 @@ export default function ApiKeysPage() {
               <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 rounded-lg flex items-start">
                 <ExclamationTriangleIcon className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
                 <p className="text-sm">
-                  This API key will only be displayed once. If you lose it, you'll need to create a new one.
+                  This API key will only be displayed once. If you lose it, you&apos;ll need to create a new one.
                 </p>
               </div>
               
@@ -470,7 +470,7 @@ export default function ApiKeysPage() {
               <div className="space-y-2">
                 <p className="font-medium">Warning: Destructive Action</p>
                 <p className="text-sm">
-                  Revoking "{selectedKeyToDelete?.name}" will immediately invalidate the key.
+                  Revoking &quot;{selectedKeyToDelete?.name}&quot; will immediately invalidate the key.
                   Any applications using this key will no longer be able to access the API.
                 </p>
               </div>

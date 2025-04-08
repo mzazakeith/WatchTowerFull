@@ -517,7 +517,7 @@ export default function IncidentsPage() {
                     <ClockIcon className="h-16 w-16 text-neutral-300 mb-4" />
                     <h3 className="text-xl font-medium">Select an Incident</h3>
                     <p className="text-neutral-500 dark:text-neutral-400 mt-2 text-center max-w-md">
-                      View the timeline of an incident by clicking "View Details" on any incident card.
+                      View the timeline of an incident by clicking &quot;View Details&quot; on any incident card.
                     </p>
                   </CardContent>
                 </Card>

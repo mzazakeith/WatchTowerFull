@@ -159,7 +159,7 @@ export default function NotificationsPage() {
                 <CardHeader>
                   <CardTitle>Notification Channels</CardTitle>
                   <CardDescription>
-                    Choose how you'd like to receive notifications and alerts
+                    Choose how you&apos;d like to receive notifications and alerts
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -683,7 +683,7 @@ export default function NotificationsPage() {
                           <div>
                             <FormLabel className="font-medium">Quiet Hours</FormLabel>
                             <FormDescription>
-                              Don't send notifications during specific hours
+                              Don&apos;t send notifications during specific hours
                             </FormDescription>
                           </div>
                           <FormControl>

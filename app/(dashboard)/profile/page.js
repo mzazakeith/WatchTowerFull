@@ -381,7 +381,7 @@ export default function ProfilePage() {
             <CardHeader>
               <CardTitle>Notification Preferences</CardTitle>
               <CardDescription>
-                Configure how and when you'd like to be notified
+                Configure how and when you&apos;d like to be notified
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -462,7 +462,7 @@ export default function ProfilePage() {
                         <div>
                           <Label htmlFor="pushNotifications" className="font-medium">Browser Push Notifications</Label>
                           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                            Receive real-time alerts even when you're not in the app
+                            Receive real-time alerts even when you&apos;re not in the app
                           </p>
                         </div>
                         <Switch 
@@ -557,7 +557,7 @@ export default function ProfilePage() {
                 ) : (
                   <div className="space-y-4">
                     <p className="text-sm">
-                      We strongly recommend enabling two-factor authentication to protect your account. We'll send a verification code to your phone or email when you sign in.
+                      We strongly recommend enabling two-factor authentication to protect your account. We&apos;ll send a verification code to your phone or email when you sign in.
                     </p>
                     <Button variant="outline" type="button">
                       <KeyIcon className="h-4 w-4 mr-2" />
